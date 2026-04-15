@@ -1391,17 +1391,18 @@ Status: ${onGround ? '🛫 On Ground' : '✈️ Airborne'}
           ))}
         </div>
 
-        <div className="hud-section">
-          <div className="hud-section-title">QUICK LOCATIONS</div>
-          <div className="location-buttons">
-            <button onClick={() => flyTo(-74.006, 40.7128, 500000)}>NYC</button>
-            <button onClick={() => flyTo(-0.1276, 51.5074, 500000)}>LONDON</button>
-            <button onClick={() => flyTo(51.3889, 35.6892, 500000)}>TEHRAN</button>
-            <button onClick={() => flyTo(139.6917, 35.6895, 500000)}>TOKYO</button>
-            <button onClick={() => flyTo(56.3, 26.1, 800000)}>HORMUZ</button>
-            <button onClick={() => flyTo(32.5, 53.0, 2000000)}>IRAN</button>
-          </div>
-        </div>
+<div className="hud-section">
+<div className="hud-section-title">QUICK LOCATIONS</div>
+<div className="location-buttons">
+<button onClick={() => { if (viewer) { viewer.camera.flyTo({ destination: Cesium.Cartesian3.fromDegrees(45, 30, 20000000), duration: 2 }); setSelectedFlight(null); } }}>🌍 RESET</button>
+<button onClick={() => flyTo(-74.006, 40.7128, 500000)}>NYC</button>
+<button onClick={() => flyTo(-0.1276, 51.5074, 500000)}>LONDON</button>
+<button onClick={() => flyTo(51.3889, 35.6892, 500000)}>TEHRAN</button>
+<button onClick={() => flyTo(139.6917, 35.6895, 500000)}>TOKYO</button>
+<button onClick={() => flyTo(56.3, 26.1, 800000)}>HORMUZ</button>
+<button onClick={() => flyTo(32.5, 53.0, 2000000)}>IRAN</button>
+</div>
+</div>
 
         <div className="hud-section">
           <div className="hud-section-title">4D REPLAY</div>

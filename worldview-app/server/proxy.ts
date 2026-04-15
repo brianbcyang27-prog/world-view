@@ -526,24 +526,48 @@ app.get('/api/flight/:hex', async (req, res) => {
 });
 
 app.get('/api/satellites', async (req, res) => {
-  try {
-    if (satelliteCache && Date.now() - satelliteCache.timestamp < CACHE_DURATION * 60) {
-      res.send(satelliteCache.data);
-      return;
-    }
-    const response = await fetch('https://celestrak.org/NORAD/elements/gp.php?GROUP=stations&FORMAT=tle', {
-      signal: AbortSignal.timeout(15000)
-    });
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    const text = await response.text();
-    satelliteCache = { data: text, timestamp: Date.now() };
-    console.log('[PROXY] Fetched TLE data');
-    res.send(text);
-  } catch (error) {
-    console.error('[PROXY] Satellite error:', error);
-    if (satelliteCache) res.send(satelliteCache.data);
-    else res.status(503).json({ error: 'Satellite data unavailable' });
-  }
+try {
+if (satelliteCache && Date.now() - satelliteCache.timestamp < CACHE_DURATION * 60) {
+res.send(satelliteCache.data);
+return;
+}
+// Try multiple TLE sources
+const tleUrls = [
+'https://celestrak.org/NORAD/elements/gp.php?GROUP=stations&FORMAT=tle',
+'https://celestrak.org/NORAD/elements/gp.php?GROUP=active&FORMAT=tle',
+];
+
+let lastError: Error | null = null;
+for (const url of tleUrls) {
+try {
+const response = await fetch(url, {
+signal: AbortSignal.timeout(30000),
+headers: { 'User-Agent': 'WorldView-OSINT/1.0' }
+});
+if (response.ok) {
+const text = await response.text();
+satelliteCache = { data: text, timestamp: Date.now() };
+console.log('[PROXY] Fetched TLE data from:', url);
+res.send(text);
+return;
+}
+} catch (e) {
+lastError = e as Error;
+console.log('[PROXY] TLE source failed:', url, e);
+}
+}
+// Return cached data if available
+if (satelliteCache) {
+console.log('[PROXY] Returning cached TLE data');
+res.send(satelliteCache.data);
+} else {
+throw lastError || new Error('All TLE sources failed');
+}
+} catch (error) {
+console.error('[PROXY] Satellite error:', error);
+if (satelliteCache) res.send(satelliteCache.data);
+else res.status(503).json({ error: 'Satellite data unavailable - CelesTrak timeout. Try again later.' });
+}
 });
 
 app.get('/api/gps-jamming', async (req, res) => {
