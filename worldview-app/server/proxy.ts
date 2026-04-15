@@ -11,6 +11,59 @@ const routeCache: Map<string, any> = new Map();
 const aircraftInfoCache: Map<string, any> = new Map();
 const CACHE_DURATION = 45000;
 
+const ROUTES_CACHE: Map<string, { origin: string; destination: string }[]> = new Map();
+let routesLoaded = false;
+
+async function loadRoutesDatabase(): Promise<void> {
+if (routesLoaded) return;
+try {
+const resp = await fetch('https://raw.githubusercontent.com/jpatokal/openflights/master/data/routes.dat');
+const text = await resp.text();
+const lines = text.split('\n');
+lines.forEach(line => {
+const parts = line.split(',');
+if (parts.length >= 4) {
+const airline = parts[0];
+const origin = parts[2];
+const dest = parts[4];
+const key = `${airline}:${origin}:${dest}`;
+if (!ROUTES_CACHE.has(airline)) {
+ROUTES_CACHE.set(airline, []);
+}
+const routes = ROUTES_CACHE.get(airline)!;
+if (!routes.some(r => r.origin === origin && r.destination === dest)) {
+routes.push({ origin, destination: dest });
+}
+}
+});
+routesLoaded = true;
+console.log('[PROXY] Loaded routes database:', ROUTES_CACHE.size, 'airlines');
+} catch (e) {
+console.error('[PROXY] Failed to load routes:', e);
+}
+}
+
+function findRouteForCallsign(callsign: string): { origin: string; destination: string } {
+const parsed = parseCallsign(callsign);
+if (!parsed.airline) return { origin: '', destination: '' };
+
+const routes = ROUTES_CACHE.get(parsed.airline);
+if (routes && routes.length > 0) {
+const hash = Math.abs(hashCode(callsign)) % routes.length;
+return routes[hash];
+}
+return { origin: '', destination: '' };
+}
+
+function hashCode(str: string): number {
+let hash = 0;
+for (let i = 0; i < str.length; i++) {
+hash = ((hash << 5) - hash) + str.charCodeAt(i);
+hash |= 0;
+}
+return hash;
+}
+
 const AIRLINE_CODES: Record<string, string> = {
   'AAL': 'American Airlines', 'ACA': 'Air Canada', 'AFR': 'Air France', 'AIC': 'Air India',
   'ANA': 'All Nippon Airways', 'BAW': 'British Airways', 'CAL': 'Air China', 'CPA': 'Cathay Pacific',
@@ -242,8 +295,13 @@ function getAirportInfo(code: string): { city: string; name: string; country: st
 }
 
 function estimateRoute(airline: string, lat: number, lon: number): { origin: string; destination: string } {
-  const routeInfo = AIRLINE_ROUTES[airline];
-  if (!routeInfo) return { origin: '', destination: '' };
+const routes = ROUTES_CACHE.get(airline);
+if (routes && routes.length > 0) {
+const idx = Math.abs(Math.floor(lat * 100 + lon)) % routes.length;
+return routes[idx];
+}
+const routeInfo = AIRLINE_ROUTES[airline];
+if (!routeInfo) return { origin: '', destination: '' };
   
   const now = Date.now();
   const hash = Math.abs(lat * 1000 + lon * 100 + now % 86400) % routeInfo.hubs.length;
@@ -636,7 +694,75 @@ app.get('/api/timeline/:hours', async (req, res) => {
   res.json({ timestamps, timestamp: now });
 });
 
+app.get('/api/news', async (req, res) => {
+try {
+const query = req.query.q as string || '';
+const mode = req.query.mode as string || 'artlist';
+const timespan = req.query.timespan as string || '24h';
+const format = req.query.format as string || 'json';
+
+const gdeltUrl = `https://api.gdeltproject.org/api/v2/doc/doc?query=${encodeURIComponent(query || 'world news')}&mode=${mode}&timespan=${timespan}&format=${format}&maxrecords=50`;
+
+const response = await fetch(gdeltUrl, {
+signal: AbortSignal.timeout(30000),
+headers: { 'User-Agent': 'WorldView-OSINT/1.0' }
+});
+
+if (!response.ok) throw new Error(`GDELT error: ${response.status}`);
+const data = await response.json();
+
+const articles = (data.articles || []).map((article: any) => ({
+url: article.url,
+title: article.title,
+source: article.domain || new URL(article.url).hostname,
+pubDate: article.seendate || article.pubdate,
+language: article.sourcecollections?.[0]?.source?.language || 'en',
+theme: article.themes?.[0]?.split(',')[0] || 'general',
+tone: article.tone ? parseFloat(article.tone.split(',')[0]) : 0,
+lat: null,
+lon: null
+}));
+
+res.json({ articles, timestamp: Date.now(), total: articles.length });
+} catch (error) {
+console.error('[PROXY] News error:', error);
+res.status(503).json({ error: 'News data unavailable', articles: [] });
+}
+});
+
+app.get('/api/news/geo', async (req, res) => {
+try {
+const query = req.query.q as string || '';
+const timespan = req.query.timespan as string || '7d';
+
+const geoUrl = `https://api.gdeltproject.org/api/v2/geo/geo?query=${encodeURIComponent(query || 'conflict protest military')}&timespan=${timespan}&format=json`;
+
+const response = await fetch(geoUrl, {
+signal: AbortSignal.timeout(30000),
+headers: { 'User-Agent': 'WorldView-OSINT/1.0' }
+});
+
+if (!response.ok) throw new Error(`GDELT GEO error: ${response.status}`);
+const data = await response.json();
+
+const events = (data.features || []).map((feature: any) => ({
+lat: feature.geometry?.coordinates?.[1] || 0,
+lon: feature.geometry?.coordinates?.[0] || 0,
+name: feature.properties?.name || '',
+url: feature.properties?.url || '',
+tone: feature.properties?.tone || 0,
+count: feature.properties?.count || 1
+}));
+
+res.json({ events, timestamp: Date.now() });
+} catch (error) {
+console.error('[PROXY] News GEO error:', error);
+res.status(503).json({ error: 'News geo data unavailable', events: [] });
+}
+});
+
 app.listen(PORT, () => {
-  console.log(`Proxy server running on http://localhost:${PORT}`);
-  console.log('[PROXY] OpenSky Network + Planespotters - Enhanced flight tracking');
+console.log(`Proxy server running on http://localhost:${PORT}`);
+console.log('[PROXY] Loading OpenFlights route database...');
+loadRoutesDatabase();
 });

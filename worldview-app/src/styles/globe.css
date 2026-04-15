@@ -662,6 +662,115 @@ html, body, #root {
 }
 
 .flight-info-panel::-webkit-scrollbar-thumb {
-  background: var(--accent-cyan);
-  border-radius: 3px;
+background: var(--accent-cyan);
+border-radius: 3px;
+}
+
+/* News Panel */
+.news-panel {
+position: absolute;
+bottom: 20px;
+left: 50%;
+transform: translateX(-50%);
+background: rgba(10, 10, 10, 0.95);
+border: 1px solid var(--accent-cyan);
+border-radius: 4px;
+padding: 0;
+min-width: 400px;
+max-width: 600px;
+z-index: 1000;
+}
+
+.news-panel-header {
+display: flex;
+justify-content: space-between;
+align-items: center;
+padding: 10px 15px;
+background: var(--bg-tertiary);
+border-bottom: 1px solid var(--accent-cyan);
+font-size: 12px;
+font-weight: 600;
+color: var(--accent-cyan);
+}
+
+.news-count {
+color: var(--text-secondary);
+font-size: 11px;
+}
+
+.news-panel-body {
+padding: 12px 15px;
+}
+
+.news-info {
+font-size: 11px;
+color: var(--text-secondary);
+margin: 0 0 8px 0;
+line-height: 1.5;
+}
+
+.news-hint {
+font-size: 10px;
+color: var(--text-secondary);
+opacity: 0.7;
+margin: 0;
+}
+
+.stat.news {
+background: rgba(34, 197, 94, 0.1);
+border: 1px solid rgba(34, 197, 94, 0.5);
+}
+
+.stat.news .stat-label {
+color: #22c55e;
+}
+
+/* Breaking News Ticker */
+.breaking-news-ticker {
+position: absolute;
+top: 10px;
+left: 50%;
+transform: translateX(-50%);
+background: rgba(239, 68, 68, 0.9);
+border: 1px solid #ef4444;
+border-radius: 4px;
+padding: 8px 15px;
+display: flex;
+align-items: center;
+gap: 12px;
+max-width: 80%;
+z-index: 1001;
+}
+
+.ticker-label {
+font-weight: 700;
+font-size: 11px;
+color: white;
+background: rgba(0, 0, 0, 0.3);
+padding: 2px 8px;
+border-radius: 3px;
+animation: pulse 1.5s infinite;
+}
+
+@keyframes pulse {
+0%, 100% { opacity: 1; }
+50% { opacity: 0.6; }
+}
+
+.ticker-content {
+display: flex;
+gap: 30px;
+overflow: hidden;
+}
+
+.ticker-item {
+font-size: 12px;
+color: white;
+white-space: nowrap;
+}
+
+.ticker-item::after {
+content: '•';
+margin-left: 30px;
+color: rgba(255, 255, 255, 0.5);
 }

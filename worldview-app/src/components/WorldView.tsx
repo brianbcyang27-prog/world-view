@@ -4,11 +4,12 @@ import { twoline2satrec, propagate, gstime, eciToGeodetic } from 'satellite';
 
 type ShaderMode = 'normal' | 'nvg' | 'flir' | 'crt' | 'anime';
 type LayerVisibility = {
-  flights: boolean;
-  satellites: boolean;
-  gpsJamming: boolean;
-  maritime: boolean;
-  noflyzones: boolean;
+flights: boolean;
+satellites: boolean;
+gpsJamming: boolean;
+maritime: boolean;
+noflyzones: boolean;
+news: boolean;
 };
 
 interface SatelliteData {
@@ -36,14 +37,23 @@ interface NoFlyZone {
 }
 
 interface MaritimeVessel {
-  mmsi: string;
-  name: string;
-  lat: number;
-  lon: number;
-  speed: number;
-  heading: number;
-  type: string;
-  flag: string;
+mmsi: string;
+name: string;
+lat: number;
+lon: number;
+speed: number;
+heading: number;
+type: string;
+flag: string;
+}
+
+interface NewsEvent {
+lat: number;
+lon: number;
+name: string;
+url: string;
+tone: number;
+count: number;
 }
 
 const API_BASE = 'http://localhost:3001';
@@ -57,17 +67,19 @@ const WorldView: React.FC = () => {
   const satelliteEntitiesRef = useRef<Cesium.Entity[]>([]);
   const gpsJammingEntitiesRef = useRef<Cesium.Entity[]>([]);
   const maritimeEntitiesRef = useRef<Cesium.Entity[]>([]);
-  const noFlyZoneEntitiesRef = useRef<Cesium.Entity[]>([]);
-  const orbitPathRef = useRef<Cesium.Entity | null>(null);
-  const satellitesDataRef = useRef<SatelliteData[]>([]);
+const noFlyZoneEntitiesRef = useRef<Cesium.Entity[]>([]);
+const newsEntitiesRef = useRef<Cesium.Entity[]>([]);
+const orbitPathRef = useRef<Cesium.Entity | null>(null);
+const satellitesDataRef = useRef<SatelliteData[]>([]);
 
-  const [layers, setLayers] = useState<LayerVisibility>({
-    flights: true,
-    satellites: true,
-    gpsJamming: false,
-    maritime: false,
-    noflyzones: false
-  });
+const [layers, setLayers] = useState<LayerVisibility>({
+flights: true,
+satellites: true,
+gpsJamming: false,
+maritime: false,
+noflyzones: false,
+news: false
+});
 
   const [shaderMode, setShaderMode] = useState<ShaderMode>('normal');
   const [flightCount, setFlightCount] = useState(0);
@@ -78,10 +90,11 @@ const WorldView: React.FC = () => {
   const [satellitesLoading, setSatellitesLoading] = useState(false);
   const [gpsJammingCount, setGpsJammingCount] = useState(0);
   const [maritimeCount, setMaritimeCount] = useState(0);
-  const [noFlyZoneCount, setNoFlyZoneCount] = useState(0);
-  const [trackedSatellite, setTrackedSatellite] = useState<string | null>(null);
-  const [selectedFlight, setSelectedFlight] = useState<any>(null);
-  const [flightHistory, setFlightHistory] = useState<Map<string, {lat: number, lon: number, time: number}[]>>(new Map());
+const [noFlyZoneCount, setNoFlyZoneCount] = useState(0);
+const [newsCount, setNewsCount] = useState(0);
+const [trackedSatellite, setTrackedSatellite] = useState<string | null>(null);
+const [selectedFlight, setSelectedFlight] = useState<any>(null);
+const [flightHistory, setFlightHistory] = useState<Map<string, {lat: number, lon: number, time: number}[]>>(new Map());
   
   const [timelineMode, setTimelineMode] = useState(false);
   const [currentTimeIndex, setCurrentTimeIndex] = useState(0);
@@ -942,12 +955,78 @@ Status: ${onGround ? '🛫 On Ground' : '✈️ Airborne'}
       }
     };
 
-    fetchNoFlyZones();
+fetchNoFlyZones();
 
-    return () => {
-      clearNoFlyZones();
-    };
-  }, [viewer, layers.noflyzones]);
+return () => {
+clearNoFlyZones();
+};
+}, [viewer, layers.noflyzones]);
+
+// News layer effect
+useEffect(() => {
+if (!viewer) return;
+
+const clearNews = () => {
+newsEntitiesRef.current.forEach(entity => {
+viewer.entities.remove(entity);
+});
+newsEntitiesRef.current = [];
+};
+
+if (!layers.news) {
+clearNews();
+setNewsCount(0);
+return;
+}
+
+const fetchNews = async () => {
+try {
+const response = await fetch(`${API_BASE}/api/news/geo?q=conflict protest military disaster&timespan=7d`);
+const data = await response.json();
+
+clearNews();
+
+if (data.events && data.events.length > 0) {
+const entities: Cesium.Entity[] = [];
+
+data.events.forEach((event: NewsEvent) => {
+if (!event.lat || !event.lon) return;
+
+const toneColor = event.tone < -5 ? Cesium.Color.RED :
+event.tone < 0 ? Cesium.Color.ORANGE :
+event.tone < 5 ? Cesium.Color.YELLOW :
+Cesium.Color.GREEN;
+
+const entity = viewer.entities.add({
+position: Cesium.Cartesian3.fromDegrees(event.lon, event.lat, 0),
+point: {
+pixelSize: Math.min(12, 6 + event.count),
+color: toneColor.withAlpha(0.8),
+outlineColor: Cesium.Color.WHITE,
+outlineWidth: 1,
+heightReference: Cesium.HeightReference.CLAMP_TO_GROUND
+},
+description: `**News Event**\n\n${event.name || 'Unknown'}\n\nTone: ${event.tone?.toFixed(1) || 0}\nMentions: ${event.count || 1}\n\n[View Article](${event.url || '#'})`
+});
+entities.push(entity);
+});
+
+newsEntitiesRef.current = entities;
+setNewsCount(data.events.length);
+}
+} catch (error) {
+console.error('[NEWS] Error:', error);
+}
+};
+
+fetchNews();
+const interval = setInterval(fetchNews, 900000);
+
+return () => {
+clearInterval(interval);
+clearNews();
+};
+}, [viewer, layers.news]);
 
   // Shader mode effects
   useEffect(() => {
@@ -1369,7 +1448,7 @@ Status: ${onGround ? '🛫 On Ground' : '✈️ Airborne'}
             >
               <input type="checkbox" checked={layers[key]} readOnly />
               <label>
-                {key.toUpperCase().replace('GPSJAMMING', 'GPS JAM').replace('NOFLYZONES', 'NO-FLY ZONES')}
+                {key.toUpperCase().replace('GPSJAMMING', 'GPS JAM').replace('NOFLYZONES', 'NO-FLY ZONES').replace('NEWS', '📰 NEWS')}
                 {(key === 'flights' && flightsLoading) && ' ⏳'}
                 {(key === 'satellites' && satellitesLoading) && ' ⏳'}
               </label>
@@ -1428,29 +1507,51 @@ Status: ${onGround ? '🛫 On Ground' : '✈️ Airborne'}
           <span className="stat-label">SHIPS</span>
           <span className="stat-value">{maritimeCount}</span>
         </div>
-        {noFlyZoneCount > 0 && (
-          <div className="stat nofly">
-            <span className="stat-label">NO-FLY ZONES</span>
-            <span className="stat-value">{noFlyZoneCount}</span>
-          </div>
-        )}
-        {gpsJammingCount > 0 && (
+{noFlyZoneCount > 0 && (
+<div className="stat nofly">
+<span className="stat-label">NO-FLY ZONES</span>
+<span className="stat-value">{noFlyZoneCount}</span>
+</div>
+)}
+{newsCount > 0 && (
+<div className="stat news">
+<span className="stat-label">NEWS EVENTS</span>
+<span className="stat-value">{newsCount}</span>
+</div>
+)}
+{gpsJammingCount > 0 && (
           <div className="stat gps-jam">
             <span className="stat-label">GPS INTERFERENCE</span>
             <span className="stat-value">{gpsJammingCount}</span>
           </div>
         )}
-        {trackedSatellite && (
-          <div className="stat tracking">
-            <span className="stat-label">TRACKING SAT</span>
-            <span className="stat-value" title={trackedSatellite}>
-              {trackedSatellite.length > 12 ? trackedSatellite.substring(0, 9) + '...' : trackedSatellite}
-            </span>
-          </div>
-        )}
-      </div>
-    </div>
-  );
+{trackedSatellite && (
+<div className="stat tracking">
+<span className="stat-label">TRACKING SAT</span>
+<span className="stat-value" title={trackedSatellite}>
+{trackedSatellite.length > 12 ? trackedSatellite.substring(0, 9) + '...' : trackedSatellite}
+</span>
+</div>
+)}
+</div>
+
+{layers.news && newsCount > 0 && (
+<div className="news-panel">
+<div className="news-panel-header">
+<span>📰 NEWS EVENTS</span>
+<span className="news-count">{newsCount} events</span>
+</div>
+<div className="news-panel-body">
+<p className="news-info">
+Showing geolocated news events from the last 7 days.
+Events colored by sentiment: <span style={{color: '#ef4444'}}>negative</span>, <span style={{color: '#f97316'}}>concerning</span>, <span style={{color: '#eab308'}}>neutral</span>, <span style={{color: '#22c55e'}}>positive</span>
+</p>
+<p className="news-hint">Click on markers to view event details. Toggle NEWS layer to enable/disable.</p>
+</div>
+</div>
+)}
+</div>
+);
 };
 
 export default WorldView;
