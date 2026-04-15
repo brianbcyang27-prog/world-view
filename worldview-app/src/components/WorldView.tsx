@@ -137,59 +137,99 @@ cesiumViewer.selectedEntityChanged.addEventListener((selectedEntity: Cesium.Enti
         return;
       }
       
-      const entityId = selectedEntity.id as string || '';
-      
+const entityId = selectedEntity.id as string || '';
+
           // Check if it's a flight
           if (entityId.startsWith('flight_')) {
             const hex = entityId.replace('flight_', '');
             const props = selectedEntity.properties;
 
             if (props) {
-              const details = props.details ? JSON.parse(props.details as string) : {};
+              // Helper to safely get property value from Cesium Entity properties
+              const getPropValue = (propObj: any, name: string, fallback: any = null): any => {
+                try {
+                  const prop = propObj[name];
+                  if (prop !== undefined && prop !== null) {
+                    if (typeof prop === 'object' && 'getValue' in prop) {
+                      return prop.getValue(Cesium.JulianDate.now());
+                    }
+                    return prop;
+                  }
+                  return fallback;
+                } catch { return fallback; }
+              };
+
+              const detailsJson = getPropValue(props, 'details', '{}');
+const details = detailsJson ? JSON.parse(detailsJson) : {};
               setSelectedFlight({
                 id: entityId,
-                hex,
-                callsign: props.callsign || 'Unknown',
-                registration: props.registration || 'N/A',
-                aircraftType: props.aircraftType || 'N/A',
-                aircraftDesc: props.aircraftDesc || 'N/A',
-                lat: props.lat || 0,
-                lon: props.lon || 0,
-                altFeet: props.altFeet || 0,
-                groundSpeedKnots: props.groundSpeedKnots || 0,
-                track: props.track || 0,
-                headingDirection: props.headingDirection || 'N',
-                onGround: props.onGround || false,
-                squawk: props.squawk || 'N/A',
-                isMilitary: props.isMilitary || false,
-                verticalSpeed: props.verticalSpeed || '0 ft/min',
-                positionAccuracy: props.positionAccuracy || 'Unknown',
-                signalStrength: props.signalStrength || 'Unknown',
-                airline: details.airline || props.airline || 'Unknown',
-                flightNumber: details.flightNumber || props.flightNumber || 'N/A',
-                origin: details.origin || props.origin || '',
-                originCity: details.originCity || props.originCity || '',
-                destination: details.destination || props.destination || '',
-                destinationCity: details.destinationCity || props.destinationCity || '',
+                hex: getPropValue(props, 'hex', hex),
+                callsign: getPropValue(props, 'callsign', 'Unknown'),
+                registration: getPropValue(props, 'registration', 'N/A'),
+                aircraftType: getPropValue(props, 'aircraftType', 'N/A'),
+                aircraftDesc: getPropValue(props, 'aircraftDesc', 'N/A'),
+                lat: getPropValue(props, 'lat', 0),
+                lon: getPropValue(props, 'lon', 0),
+                altFeet: getPropValue(props, 'altFeet', 0),
+                groundSpeedKnots: getPropValue(props, 'groundSpeedKnots', 0),
+                groundSpeedKmh: getPropValue(props, 'groundSpeedKmh', 0),
+                track: getPropValue(props, 'track', 0),
+                trackDirection: getPropValue(props, 'trackDirection', 'N'),
+                onGround: getPropValue(props, 'onGround', false),
+                squawk: getPropValue(props, 'squawk', 'N/A'),
+                isMilitary: getPropValue(props, 'isMilitary', false),
+                verticalSpeed: getPropValue(props, 'verticalSpeed', '0 ft/min'),
+                verticalSpeedFpm: getPropValue(props, 'verticalSpeedFpm', 0),
+                positionAccuracy: getPropValue(props, 'positionAccuracy', 'Unknown'),
+                signalStrength: getPropValue(props, 'signalStrength', 'Unknown'),
+                rssi: getPropValue(props, 'rssi', null),
+                // Flight info
+                airline: getPropValue(props, 'airline', details.airline || 'Unknown'),
+                flightNumber: getPropValue(props, 'flightNumber', details.flightNumber || 'N/A'),
+                airlineCode: getPropValue(props, 'airlineCode', details.airlineCode || ''),
+                // Route info
+                origin: getPropValue(props, 'origin', details.origin || ''),
+                originCity: getPropValue(props, 'originCity', details.originCity || ''),
+                originCountry: getPropValue(props, 'originCountry', details.originCountry || ''),
+                originName: getPropValue(props, 'originName', details.originName || ''),
+                destination: getPropValue(props, 'destination', details.destination || ''),
+                destinationCity: getPropValue(props, 'destinationCity', details.destinationCity || ''),
+                destinationCountry: getPropValue(props, 'destinationCountry', details.destinationCountry || ''),
+                destinationName: getPropValue(props, 'destinationName', details.destinationName || ''),
+                // Additional data
+                emergency: getPropValue(props, 'emergency', details.emergency || 'none'),
+                alert: getPropValue(props, 'alert', details.alert || false),
+                distance: getPropValue(props, 'distance', details.distance || 0),
+                direction: getPropValue(props, 'direction', details.direction || 0),
+                nac_p: getPropValue(props, 'nac_p', details.nac_p || 0),
+                nic: getPropValue(props, 'nic', details.nic || 0),
+                navAltitudeMcp: getPropValue(props, 'navAltitudeMcp', details.navAltitudeMcp || null),
+                navHeading: getPropValue(props, 'navHeading', details.navHeading || null),
+                navQnh: getPropValue(props, 'navQnh', details.navQnh || null),
+                operator: getPropValue(props, 'operator', details.operator || ''),
+                year: getPropValue(props, 'year', details.year || ''),
+                messages: getPropValue(props, 'messages', details.messages || 0),
+                seen: getPropValue(props, 'seen', details.seen || 0),
+                sil: getPropValue(props, 'sil', details.sil || 3),
+                silType: getPropValue(props, 'silType', details.silType || 'perhour'),
+                category: getPropValue(props, 'category', details.category || ''),
               });
             }
-        
-        // Fly to the flight
-        const props2 = selectedEntity.properties;
-        if (props2 && viewer) {
-          viewer.camera.flyTo({
-            destination: Cesium.Cartesian3.fromDegrees(
-              props2.lon as number,
-              props2.lat as number,
-              (props2.altFeets as number || 10000) * 0.3048 + 100000
-            ),
-            duration: 1
-          });
-        }
-        
-        setTrackedSatellite(null);
-        clearOrbitPathRef.current?.();
-      } 
+
+            // Fly to the flight
+            if (props && viewer) {
+              const lat = (props as any).lat?.getValue ? props.lat.getValue(Cesium.JulianDate.now()) : ((props as any).lat || 0);
+              const lon = (props as any).lon?.getValue ? props.lon.getValue(Cesium.JulianDate.now()) : ((props as any).lon || 0);
+              const altFeet = (props as any).altFeet?.getValue ? props.altFeet.getValue(Cesium.JulianDate.now()) : ((props as any).altFeet || 10000);
+              viewer.camera.flyTo({
+                destination: Cesium.Cartesian3.fromDegrees(lon, lat, altFeet * 0.3048 + 50000),
+                duration: 1
+              });
+            }
+
+            setTrackedSatellite(null);
+            clearOrbitPathRef.current?.();
+          }
       // Check if it's a satellite
       else if (selectedEntity.name) {
         handleTrackSatelliteRef.current?.(selectedEntity.name);
@@ -274,31 +314,30 @@ const fetchFlights = async () => {
             const flightCallsign = (state[1] as string)?.trim() || 'UNKNOWN';
             const registration = state[2] as string || '';
             const aircraftType = (state[18] as string) || '';
-            const aircraftDesc = state[19] as string || '';
-            const onGround = state[8] as boolean || false;
-            const squawk = state[14] as string || '';
-            
-            const isMilitary = aircraftType.includes('C-') || 
-                               aircraftType.includes('KC-') ||
-                               aircraftType.includes('F-') || aircraftType.includes('H60') ||
-                               flightCallsign.includes('RCH') || flightCallsign.includes('CMV') ||
-                               flightCallsign.includes('TALON') || flightCallsign.includes('UGLY') ||
-                               flightCallsign.includes('BANZAI') || flightCallsign.includes('EAGLE');
+const aircraftDesc = state[19] as string || '';
+        const onGround = state[8] as boolean || false;
+        const squawk = state[14] as string || '';
 
         // Get detailed info from the full data
         const details = data.aircraftDetails?.[hex] || {};
         const airline = details.airline || '';
         const flightNumber = details.flightNumber || '';
+        const airlineCode = details.airlineCode || '';
         const origin = details.origin || '';
         const originCity = details.originCity || '';
+        const originCountry = details.originCountry || '';
+        const originName = details.originName || '';
         const destination = details.destination || '';
         const destinationCity = details.destinationCity || '';
+        const destinationCountry = details.destinationCountry || '';
+        const destinationName = details.destinationName || '';
+        const isMilitary = details.mil || aircraftType.includes('C-') || aircraftType.includes('KC-') || aircraftType.includes('F-') || aircraftType.includes('H60') || flightCallsign.includes('RCH') || flightCallsign.includes('CMV');
 
         // Update flight history for trail
         const history = newHistory.get(hex) || [];
         history.push({ lat, lon, time: Date.now() });
-        // Keep last 20 positions
-        if (history.length > 20) history.shift();
+        // Keep last 25 positions for smoother trails
+        if (history.length > 25) history.shift();
         newHistory.set(hex, history);
 
         // Create flight entity with all data
@@ -306,11 +345,11 @@ const fetchFlights = async () => {
           id: `flight_${hex}`,
           name: flightCallsign || hex,
           position: Cesium.Cartesian3.fromDegrees(lon, lat, alt),
-          // Main aircraft point
+          // Main aircraft point - larger for military
           point: {
-            pixelSize: isMilitary ? 8 : 6,
-            color: isMilitary ? Cesium.Color.ORANGE : Cesium.Color.CYAN,
-            outlineColor: Cesium.Color.BLACK,
+            pixelSize: isMilitary ? 10 : 7,
+            color: isMilitary ? Cesium.Color.ORANGE : (details.emergency !== 'none' ? Cesium.Color.RED : Cesium.Color.CYAN),
+            outlineColor: isMilitary ? Cesium.Color.DARKORANGE : Cesium.Color.BLACK,
             outlineWidth: 2,
             scaleByDistance: new Cesium.NearFarScalar(1.5e2, 3, 1.5e7, 0.5),
           },
@@ -318,34 +357,62 @@ const fetchFlights = async () => {
           properties: {
             hex,
             callsign: flightCallsign,
-            registration,
-            aircraftType,
-            aircraftDesc,
+            registration: details.registration || registration,
+            aircraftType: details.aircraftType || aircraftType,
+            aircraftDesc: details.aircraftDesc || aircraftDesc,
             lat,
             lon,
-            altFeet: Math.round(alt / 0.3048),
-            groundSpeedKnots: Math.round(groundSpeed),
-            track: Math.round(track),
-            headingDirection: getCardinalDirection(track),
-            onGround,
-            squawk,
+            altFeet: details.altBar || Math.round(alt / 0.3048),
+            groundSpeedKnots: Math.round(details.groundSpeed || groundSpeed),
+            groundSpeedKmh: details.groundSpeedKmh || Math.round((details.groundSpeed || groundSpeed) * 1.852),
+            track: Math.round(details.track || track),
+            trackDirection: details.trackDirection || getCardinalDirection(details.track || track),
+            onGround: details.onGround || onGround,
+            squawk: details.squawk || squawk,
             isMilitary,
-            // Additional details
-            verticalSpeed: details.baro_rate ? `${details.baro_rate > 0 ? '+' : ''}${Math.round(details.baro_rate * 196.85)} ft/min` : '0 ft/min',
-            nacP: details.nac_p || 0,
-            positionAccuracy: getPositionAccuracy(details.nac_p, details.nic),
+            // Vertical speed
+            verticalSpeed: details.verticalSpeed || `${details.baro_rate > 0 ? '+' : ''}${Math.round((details.baro_rate || 0) * 196.85)} ft/min`,
+            verticalSpeedFpm: details.verticalSpeedFpm || Math.round((details.baro_rate || 0) * 196.85),
+            // Signal quality
+            nac_p: details.nac_p || 0,
+            nic: details.nic || 0,
+            positionAccuracy: details.positionAccuracy || getPositionAccuracy(details.nac_p, details.nic),
             signalStrength: details.rssi ? `${details.rssi.toFixed(1)} dBm` : 'Unknown',
+            rssi: details.rssi || null,
+            // Airline info
             airline,
             flightNumber,
+            airlineCode,
+            // Route info
             origin,
             originCity,
+            originCountry,
+            originName,
             destination,
             destinationCity,
+            destinationCountry,
+            destinationName,
+            // Additional details
+            emergency: details.emergency || 'none',
+            alert: details.alert || false,
+            distance: details.distance || 0,
+            direction: details.direction || 0,
+            navAltitudeMcp: details.navAltitudeMcp || null,
+            navHeading: details.navHeading || null,
+            navQnh: details.navQnh || null,
+            operator: details.operator || '',
+            year: details.year || '',
+            messages: details.messages || 0,
+            seen: details.seen || 0,
+            sil: details.sil || 3,
+            silType: details.silType || 'perhour',
+            category: details.category || '',
+            altGeom: details.altGeom || 0,
             details: JSON.stringify(details),
           },
-          description: buildFlightDescription(hex, flightCallsign, registration, aircraftType, aircraftDesc, lat, lon, alt, groundSpeed, track, onGround, isMilitary, airline, flightNumber, origin, originCity, destination, destinationCity)
+          description: buildFlightDescription(hex, flightCallsign, details.registration || registration, details.aircraftType || aircraftType, details.aircraftDesc || aircraftDesc, lat, lon, alt, details.groundSpeed || groundSpeed, details.track || track, details.onGround || onGround, isMilitary, airline, flightNumber, origin, originCity, destination, destinationCity, destinationName, details.emergency)
         });
-            entities.push(entity);
+        entities.push(entity);
 
             // Add heading indicator (small triangle pointing direction)
             if (!onGround && groundSpeed > 50) {
@@ -358,30 +425,76 @@ const fetchFlights = async () => {
                 },
               });
               entities.push(headingEntity);
-            }
+}
 
-            // Add route trail from history
-            const historyPoints = newHistory.get(hex);
-            if (historyPoints && historyPoints.length > 2) {
-              const trailPositions: number[] = [];
-              historyPoints.forEach(p => {
-                trailPositions.push(p.lon, p.lat, alt);
-              });
-              
-              const trailEntity = viewer.entities.add({
-                id: `trail_${hex}`,
-                polyline: {
-                  positions: Cesium.Cartesian3.fromDegreesArrayHeights(trailPositions),
-                  width: 1,
-                  material: new Cesium.PolylineDashMaterialProperty({
-                    color: isMilitary ? Cesium.Color.ORANGE.withAlpha(0.4) : Cesium.Color.CYAN.withAlpha(0.4),
-                    dashLength: 8,
-                  })
-                }
-              });
-              entities.push(trailEntity);
+        // Add route trail from history
+        const historyPoints = newHistory.get(hex);
+        if (historyPoints && historyPoints.length > 2) {
+          const trailPositions: number[] = [];
+          historyPoints.forEach(p => {
+            trailPositions.push(p.lon, p.lat, alt);
+          });
+
+          const trailEntity = viewer.entities.add({
+            id: `trail_${hex}`,
+            polyline: {
+              positions: Cesium.Cartesian3.fromDegreesArrayHeights(trailPositions),
+              width: 1,
+              material: new Cesium.PolylineDashMaterialProperty({
+                color: isMilitary ? Cesium.Color.ORANGE.withAlpha(0.4) : Cesium.Color.CYAN.withAlpha(0.4),
+                dashLength: 8,
+              })
             }
-          } catch (err) {
+          });
+          entities.push(trailEntity);
+        }
+
+        // Add predicted route line to destination
+        if (destination && !onGround) {
+          const destCoords = getAirportCoords(destination);
+          if (destCoords) {
+            const routePositions = [
+              lon, lat, alt,
+              destCoords.lon, destCoords.lat, 0
+            ];
+            const routeEntity = viewer.entities.add({
+              id: `route_${hex}`,
+              polyline: {
+                positions: Cesium.Cartesian3.fromDegreesArrayHeights(routePositions),
+                width: 2,
+                material: new Cesium.PolylineGlowMaterialProperty({
+                  glowPower: 0.3,
+                  color: isMilitary ? Cesium.Color.ORANGE.withAlpha(0.7) : Cesium.Color.LIME.withAlpha(0.7),
+                })
+              }
+            });
+            entities.push(routeEntity);
+
+            // Add destination marker
+            const destMarker = viewer.entities.add({
+              id: `dest_${hex}`,
+              position: Cesium.Cartesian3.fromDegrees(destCoords.lon, destCoords.lat, 0),
+              point: {
+                pixelSize: 8,
+                color: Cesium.Color.YELLOW.withAlpha(0.8),
+                outlineColor: Cesium.Color.WHITE,
+                outlineWidth: 2,
+              },
+              label: {
+                text: destination,
+                font: '10px JetBrains Mono',
+                fillColor: Cesium.Color.YELLOW,
+                outlineColor: Cesium.Color.BLACK,
+                outlineWidth: 2,
+                style: Cesium.LabelStyle.FILL_AND_OUTLINE,
+                verticalOrigin: Cesium.VerticalOrigin.BOTTOM,
+                pixelOffset: new Cesium.Cartesian2(0, -10),
+              }
+            });
+            entities.push(destMarker);
+          }
+        }
+      } catch (err) {
             // Skip invalid flights
           }
         });
@@ -403,23 +516,133 @@ const fetchFlights = async () => {
     return directions[Math.round(heading / 22.5) % 16];
   };
 
-  const getPositionAccuracy = (nacP: number, _nic: number): string => {
-    if (nacP >= 11) return '< 3m (GPS RTK)';
-    if (nacP >= 10) return '< 10m (GPS PPP)';
-    if (nacP >= 9) return '< 100m (ADS-B)';
-    if (nacP >= 8) return '< 1nm';
-    if (nacP >= 7) return '< 10nm';
-    return 'Unknown';
-  };
+const getPositionAccuracy = (nacP: number, _nic: number): string => {
+  if (nacP >= 11) return '< 3m (GPS RTK)';
+  if (nacP >= 10) return '< 10m (GPS PPP)';
+  if (nacP >= 9) return '< 100m (ADS-B)';
+  if (nacP >= 8) return '< 1nm';
+  if (nacP >= 7) return '< 10nm';
+  return 'Unknown';
+};
 
-  const buildFlightDescription = (hex: string, callsign: string, registration: string, type: string, desc: string, lat: number, lon: number, alt: number, speed: number, track: number, onGround: boolean, isMilitary: boolean, airline?: string, flightNumber?: string, origin?: string, originCity?: string, destination?: string, destinationCity?: string): string => {
-    return `**${callsign || 'Unknown'}** (${hex})
+// Airport coordinates for route visualization
+const AIRPORT_COORDS: Record<string, { lat: number; lon: number }> = {
+  // North America
+  'JFK': { lat: 40.6413, lon: -73.7781 }, 'LAX': { lat: 33.9425, lon: -118.4081 },
+  'ORD': { lat: 41.9742, lon: -87.9073 }, 'DFW': { lat: 32.8998, lon: -97.0403 },
+  'DEN': { lat: 39.8561, lon: -104.6737 }, 'ATL': { lat: 33.6407, lon: -84.4277 },
+  'SFO': { lat: 37.6213, lon: -122.3790 }, 'SEA': { lat: 47.4502, lon: -122.3088 },
+  'MIA': { lat: 25.7959, lon: -80.2870 }, 'BOS': { lat: 42.3656, lon: -71.0096 },
+  'EWR': { lat: 40.6895, lon: -74.1745 }, 'PHX': { lat: 33.4373, lon: -112.0078 },
+  'IAH': { lat: 29.9902, lon: -95.3368 }, 'LAS': { lat: 36.0840, lon: -115.1537 },
+  'MSP': { lat: 44.8820, lon: -93.2218 }, 'DTW': { lat: 42.2162, lon: -83.3554 },
+  'PHL': { lat: 39.8744, lon: -75.2424 }, 'FLL': { lat: 26.0742, lon: -80.1506 },
+  'DCA': { lat: 38.8512, lon: -77.0402 }, 'IAD': { lat: 38.9531, lon: -77.4565 },
+  'SAN': { lat: 32.7336, lon: -117.1897 }, 'TPA': { lat: 27.9755, lon: -82.5332 },
+  'MCO': { lat: 28.4312, lon: -81.3081 }, 'PDX': { lat: 45.5898, lon: -122.5951 },
+  'STL': { lat: 38.7499, lon: -90.3700 }, 'BNA': { lat: 36.1263, lon: -86.6774 },
+  'AUS': { lat: 30.1945, lon: -97.6699 }, 'RDU': { lat: 35.8801, lon: -78.7880 },
+  'CLT': { lat: 35.2140, lon: -80.9431 }, 'SLC': { lat: 40.7899, lon: -111.9791 },
+  'MCI': { lat: 39.2976, lon: -94.7139 }, 'SAT': { lat: 29.5337, lon: -98.4698 },
+  'ABQ': { lat: 35.0402, lon: -106.6092 }, 'TUS': { lat: 32.1161, lon: -110.9410 },
+  'HOU': { lat: 29.6455, lon: -95.2789 }, 'MDW': { lat: 41.7868, lon: -87.7522 },
+  'MSY': { lat: 29.9934, lon: -90.2580 }, 'OMA': { lat: 41.3032, lon: -95.8941 },
+  'BWI': { lat: 39.1774, lon: -76.6684 }, 'RSW': { lat: 26.5362, lon: -81.7552 },
+  'PBI': { lat: 26.6832, lon: -80.0956 }, 'JAX': { lat: 30.4941, lon: -81.6879 },
+  'MEM': { lat: 35.0421, lon: -89.9792 }, 'BHM': { lat: 33.5641, lon: -86.7455 },
+  'SJC': { lat: 37.3639, lon: -121.9292 }, 'ONT': { lat: 34.0560, lon: -117.6004 },
+  'SNA': { lat: 33.6757, lon: -117.8682 }, 'BUR': { lat: 34.2006, lon: -118.3585 },
+  'LGB': { lat: 33.8177, lon: -118.1516 }, 'HNL': { lat: 21.3187, lon: -157.9225 },
+  'ANC': { lat: 61.1743, lon: -149.9962 }, 'YYZ': { lat: 43.6777, lon: -79.6248 },
+  'YVR': { lat: 49.1967, lon: -123.1815 }, 'YYC': { lat: 51.1215, lon: -114.0076 },
+  'MEX': { lat: 19.4363, lon: -99.0721 }, 'GUM': { lat: 13.4834, lon: 144.7960 },
+  // Europe
+  'LHR': { lat: 51.4700, lon: -0.4543 }, 'CDG': { lat: 49.0097, lon: 2.5479 },
+  'FRA': { lat: 50.0379, lon: 8.5622 }, 'AMS': { lat: 52.3105, lon: 4.7683 },
+  'MAD': { lat: 40.4983, lon: -3.5676 }, 'MUC': { lat: 48.3537, lon: 11.7750 },
+  'FCO': { lat: 41.8003, lon: 12.2389 }, 'BCN': { lat: 41.2974, lon: 2.0833 },
+  'LGW': { lat: 51.1537, lon: -0.1821 }, 'ZRH': { lat: 47.4647, lon: 8.5492 },
+  'VIE': { lat: 48.1103, lon: 16.5697 }, 'BRU': { lat: 50.9014, lon: 4.4844 },
+  'DUB': { lat: 53.4264, lon: -6.2499 }, 'IST': { lat: 41.2753, lon: 28.7519 },
+  'ATH': { lat: 37.9364, lon: 23.9475 }, 'WAW': { lat: 52.1657, lon: 20.9671 },
+  'BUD': { lat: 47.4294, lon: 19.2613 }, 'PRG': { lat: 50.1008, lon: 14.2600 },
+  'CPH': { lat: 55.6180, lon: 12.6560 }, 'OSL': { lat: 60.1939, lon: 11.1004 },
+  'ARN': { lat: 59.6519, lon: 17.9186 }, 'HEL': { lat: 60.3172, lon: 24.9633 },
+  'LIS': { lat: 38.7756, lon: -9.1354 }, 'MXP': { lat: 45.6306, lon: 8.7281 },
+  'VCE': { lat: 45.5053, lon: 12.3522 }, 'NCE': { lat: 43.6584, lon: 7.2159 },
+  'GVA': { lat: 46.2381, lon: 6.1089 }, 'MLA': { lat: 35.8574, lon: 14.4774 },
+  // Middle East
+  'DXB': { lat: 25.2532, lon: 55.3657 }, 'AUH': { lat: 24.4330, lon: 54.6511 },
+  'DOH': { lat: 25.2609, lon: 51.6138 }, 'JED': { lat: 21.6796, lon: 39.1565 },
+  'RUH': { lat: 24.9578, lon: 46.6989 }, 'CAI': { lat: 30.1219, lon: 31.4056 },
+  'TLV': { lat: 32.0054, lon: 34.8854 }, 'AMM': { lat: 31.9726, lon: 35.9769 },
+  'BEY': { lat: 33.8209, lon: 35.4884 }, 'KWI': { lat: 29.2266, lon: 47.9689 },
+  'BAH': { lat: 26.2708, lon: 50.6336 }, 'MCT': { lat: 23.5933, lon: 58.2889 },
+  // Asia
+  'BOM': { lat: 19.0896, lon: 72.8656 }, 'DEL': { lat: 28.5665, lon: 77.1031 },
+  'SIN': { lat: 1.3644, lon: 103.9915 }, 'HKG': { lat: 22.3080, lon: 113.9185 },
+  'NRT': { lat: 35.7720, lon: 140.3929 }, 'HND': { lat: 35.5494, lon: 139.7798 },
+  'KIX': { lat: 34.4273, lon: 135.2444 }, 'ICN': { lat: 37.4602, lon: 126.4407 },
+  'PEK': { lat: 40.0799, lon: 116.6031 }, 'PVG': { lat: 31.1434, lon: 121.8052 },
+  'CAN': { lat: 23.3924, lon: 113.2988 }, 'CTU': { lat: 30.5785, lon: 104.0650 },
+  'CKG': { lat: 29.7196, lon: 106.6425 }, 'XIY': { lat: 34.4471, lon: 108.7516 },
+  'WUH': { lat: 30.7838, lon: 114.2081 }, 'NKG': { lat: 31.7420, lon: 118.8620 },
+  'SZX': { lat: 22.6393, lon: 113.8108 }, 'BKK': { lat: 13.6900, lon: 100.7501 },
+  'KUL': { lat: 2.7456, lon: 101.7072 }, 'CGK': { lat: -6.1275, lon: 106.6537 },
+  'MNL': { lat: 14.5086, lon: 121.0194 }, 'TPE': { lat: 25.0797, lon: 121.2342 },
+  'KTM': { lat: 27.6966, lon: 85.3594 }, 'CMB': { lat: 7.1809, lon: 79.8841 },
+  'MLE': { lat: 4.1918, lon: 73.5292 }, 'DAC': { lat: 23.9903, lon: 90.4025 },
+  'ISB': { lat: 33.6167, lon: 72.8333 }, 'LHE': { lat: 31.5216, lon: 74.4033 },
+  'KHI': { lat: 24.8934, lon: 67.1612 }, 'HYD': { lat: 17.2403, lon: 78.4294 },
+  'BLR': { lat: 13.1979, lon: 77.7063 }, 'MAA': { lat: 12.9941, lon: 80.1709 },
+  'CCU': { lat: 22.6547, lon: 88.4468 }, 'NGO': { lat: 34.4347, lon: 136.8036 },
+  'PUS': { lat: 35.1796, lon: 128.9382 }, 'CJU': { lat: 33.5113, lon: 126.4928 },
+  // Oceania
+  'SYD': { lat: -33.9399, lon: 151.1753 }, 'MEL': { lat: -37.6690, lon: 144.8410 },
+  'AKL': { lat: -37.0082, lon: 174.7850 },
+  // South America
+  'GRU': { lat: -23.4356, lon: -46.4731 }, 'EZE': { lat: -34.8222, lon: -58.5358 },
+  'SCL': { lat: -33.3930, lon: -70.7856 }, 'LIM': { lat: -12.0219, lon: -77.1143 },
+  'BOG': { lat: 4.7016, lon: -74.1469 },
+};
+
+const getAirportCoords = (code: string): { lat: number; lon: number } | null => {
+  return AIRPORT_COORDS[code?.toUpperCase()] || null;
+};
+
+  const buildFlightDescription = (
+    hex: string,
+    callsign: string,
+    registration: string,
+    type: string,
+    desc: string,
+    lat: number,
+    lon: number,
+    alt: number,
+    speed: number,
+    track: number,
+    onGround: boolean,
+    isMilitary: boolean,
+    airline?: string,
+    flightNumber?: string,
+    origin?: string,
+    originCity?: string,
+    destination?: string,
+    destinationCity?: string,
+    destinationName?: string,
+    emergency?: string
+  ): string => {
+    const emergencyText = emergency && emergency !== 'none' ? `\n⚠️ **EMERGENCY: ${emergency.toUpperCase()}**` : '';
+    const milText = isMilitary ? '\n⚠️ **MILITARY AIRCRAFT**' : '';
+
+    return `**${callsign || 'Unknown'}** (${hex})${emergencyText}${milText}
 
 **Flight Info**
 Airline: ${airline || 'Unknown'}
 Flight Number: ${flightNumber || 'N/A'}
-${origin ? `Origin: ${originCity || origin} (${origin})` : ''}
-${destination ? `Destination: ${destinationCity || destination} (${destination})` : ''}
+${origin ? `Origin: ${originCity || origin} (${origin})` : 'Origin: Unknown'}
+${destination ? `Destination: ${destinationCity || destination} (${destination})` : 'Destination: Unknown'}
+${destinationName && destinationName !== destination ? `  -> ${destinationName}` : ''}
 
 **Aircraft**
 Type: ${type || 'Unknown'}
@@ -430,11 +653,9 @@ Description: ${desc || 'N/A'}
 Latitude: ${lat.toFixed(4)}°
 Longitude: ${lon.toFixed(4)}°
 Altitude: ${Math.round(alt / 0.3048)} ft
-Ground Speed: ${Math.round(speed)} knots
+Ground Speed: ${Math.round(speed)} knots (${Math.round(speed * 1.852)} km/h)
 Heading: ${Math.round(track)}° ${getCardinalDirection(track)}
-Status: ${onGround ? 'On Ground' : 'Airborne'}
-
-${isMilitary ? '\n**MILITARY AIRCRAFT**' : ''}
+Status: ${onGround ? '🛫 On Ground' : '✈️ Airborne'}
 
 *Click to see full details*`;
   };
@@ -908,14 +1129,16 @@ ${isMilitary ? '\n**MILITARY AIRCRAFT**' : ''}
           <div className="flight-info-header">
             <div className="flight-callsign">
               {selectedFlight.isMilitary && <span className="military-badge">MIL</span>}
+              {selectedFlight.emergency && selectedFlight.emergency !== 'none' && <span className="emergency-badge">EMG</span>}
               {selectedFlight.callsign || 'UNKNOWN'}
             </div>
             <button className="close-btn" onClick={() => setSelectedFlight(null)}>×</button>
           </div>
 
           <div className="flight-info-content">
+            {/* Flight Route Section */}
             <div className="flight-section">
-              <div className="flight-section-title">FLIGHT INFO</div>
+              <div className="flight-section-title">FLIGHT ROUTE</div>
               <div className="flight-row">
                 <span className="label">Airline</span>
                 <span className="value">{selectedFlight.airline || 'Unknown'}</span>
@@ -924,36 +1147,67 @@ ${isMilitary ? '\n**MILITARY AIRCRAFT**' : ''}
                 <span className="label">Flight Number</span>
                 <span className="value">{selectedFlight.flightNumber || 'N/A'}</span>
               </div>
-              {selectedFlight.origin && (
+              {selectedFlight.operator && (
                 <div className="flight-row">
+                  <span className="label">Operator</span>
+                  <span className="value">{selectedFlight.operator}</span>
+                </div>
+              )}
+              <div className="flight-row route-row">
+                <div className="route-airport">
                   <span className="label">Origin</span>
-                  <span className="value">{selectedFlight.originCity || selectedFlight.origin} ({selectedFlight.origin})</span>
+                  <span className="value airport-code">{selectedFlight.origin || '???'}</span>
+                  <span className="value city">{selectedFlight.originCity || ''}</span>
                 </div>
-              )}
-              {selectedFlight.destination && (
-                <div className="flight-row">
+                <div className="route-arrow">→</div>
+                <div className="route-airport">
                   <span className="label">Destination</span>
-                  <span className="value">{selectedFlight.destinationCity || selectedFlight.destination} ({selectedFlight.destination})</span>
+                  <span className="value airport-code">{selectedFlight.destination || '???'}</span>
+                  <span className="value city">{selectedFlight.destinationCity || ''}</span>
+                </div>
+              </div>
+              {selectedFlight.destinationName && (
+                <div className="flight-row">
+                  <span className="label">Airport Name</span>
+                  <span className="value">{selectedFlight.destinationName}</span>
                 </div>
               )}
+            </div>
+
+            {/* Aircraft Section */}
+            <div className="flight-section">
+              <div className="flight-section-title">AIRCRAFT</div>
               <div className="flight-row">
                 <span className="label">Registration</span>
-                <span className="value">{selectedFlight.registration}</span>
+                <span className="value">{selectedFlight.registration || 'N/A'}</span>
               </div>
               <div className="flight-row">
-                <span className="label">Aircraft Type</span>
-                <span className="value">{selectedFlight.aircraftType}</span>
+                <span className="label">Type</span>
+                <span className="value">{selectedFlight.aircraftType || 'Unknown'}</span>
               </div>
               <div className="flight-row">
                 <span className="label">Description</span>
-                <span className="value">{selectedFlight.aircraftDesc}</span>
+                <span className="value">{selectedFlight.aircraftDesc || 'N/A'}</span>
               </div>
+              {selectedFlight.year && (
+                <div className="flight-row">
+                  <span className="label">Year</span>
+                  <span className="value">{selectedFlight.year}</span>
+                </div>
+              )}
+              {selectedFlight.category && (
+                <div className="flight-row">
+                  <span className="label">Category</span>
+                  <span className="value">{selectedFlight.category}</span>
+                </div>
+              )}
               <div className="flight-row">
                 <span className="label">Squawk</span>
-                <span className="value">{selectedFlight.squawk}</span>
+                <span className="value">{selectedFlight.squawk || 'N/A'}</span>
               </div>
             </div>
 
+            {/* Position Section */}
             <div className="flight-section">
               <div className="flight-section-title">POSITION</div>
               <div className="flight-row">
@@ -968,38 +1222,94 @@ ${isMilitary ? '\n**MILITARY AIRCRAFT**' : ''}
                 <span className="label">Altitude</span>
                 <span className="value">{selectedFlight.altFeet?.toLocaleString()} ft</span>
               </div>
+              {selectedFlight.navAltitudeMcp && (
+                <div className="flight-row">
+                  <span className="label">MCP Altitude</span>
+                  <span className="value">{Math.round(selectedFlight.navAltitudeMcp)} ft</span>
+                </div>
+              )}
               <div className="flight-row">
                 <span className="label">Ground Speed</span>
-                <span className="value">{selectedFlight.groundSpeedKnots} knots ({Math.round(selectedFlight.groundSpeedKnots * 1.852)} km/h)</span>
+                <span className="value">{selectedFlight.groundSpeedKnots} kts ({selectedFlight.groundSpeedKmh || Math.round(selectedFlight.groundSpeedKnots * 1.852)} km/h)</span>
               </div>
               <div className="flight-row">
                 <span className="label">Heading</span>
                 <span className="value">{selectedFlight.track}° {selectedFlight.headingDirection}</span>
               </div>
+              {selectedFlight.navHeading && (
+                <div className="flight-row">
+                  <span className="label">Nav Heading</span>
+                  <span className="value">{Math.round(selectedFlight.navHeading)}°</span>
+                </div>
+              )}
               <div className="flight-row">
                 <span className="label">Vertical Speed</span>
-                <span className="value">{selectedFlight.verticalSpeed}</span>
+                <span className="value">{selectedFlight.verticalSpeedFpm > 0 ? '+' : ''}{selectedFlight.verticalSpeedFpm || 0} ft/min</span>
               </div>
               <div className="flight-row">
                 <span className="label">Status</span>
-                <span className="value">{selectedFlight.onGround ? 'On Ground' : 'Airborne'}</span>
+                <span className="value">{selectedFlight.onGround ? '🛫 On Ground' : '✈️ Airborne'}</span>
               </div>
+              {selectedFlight.distance > 0 && (
+                <div className="flight-row">
+                  <span className="label">Distance</span>
+                  <span className="value">{Math.round(selectedFlight.distance)} nm to dest</span>
+                </div>
+              )}
             </div>
 
+            {/* Signal/NAV Section */}
             <div className="flight-section">
-              <div className="flight-section-title">SIGNAL QUALITY</div>
+              <div className="flight-section-title">SIGNAL / NAV</div>
               <div className="flight-row">
                 <span className="label">Position Accuracy</span>
                 <span className="value">{selectedFlight.positionAccuracy}</span>
               </div>
               <div className="flight-row">
+                <span className="label">NAC_P</span>
+                <span className="value">{selectedFlight.nac_p || 0}</span>
+              </div>
+              <div className="flight-row">
+                <span className="label">NIC</span>
+                <span className="value">{selectedFlight.nic || 0}</span>
+              </div>
+              <div className="flight-row">
                 <span className="label">Signal Strength</span>
                 <span className="value">{selectedFlight.signalStrength}</span>
               </div>
+              {selectedFlight.navQnh && (
+                <div className="flight-row">
+                  <span className="label">QNH</span>
+                  <span className="value">{selectedFlight.navQnh} hPa</span>
+                </div>
+              )}
+              <div className="flight-row">
+                <span className="label">SIL</span>
+                <span className="value">{selectedFlight.sil || 3} ({selectedFlight.silType || 'perhour'})</span>
+              </div>
+            </div>
+
+            {/* Technical Section */}
+            <div className="flight-section">
+              <div className="flight-section-title">TECHNICAL</div>
               <div className="flight-row">
                 <span className="label">Hex ID</span>
                 <span className="value hex-id">{selectedFlight.hex}</span>
               </div>
+              <div className="flight-row">
+                <span className="label">Messages</span>
+                <span className="value">{(selectedFlight.messages || 0).toLocaleString()}</span>
+              </div>
+              <div className="flight-row">
+                <span className="label">Last Seen</span>
+                <span className="value">{selectedFlight.seen?.toFixed(1) || 0}s ago</span>
+              </div>
+              {selectedFlight.airlineCode && (
+                <div className="flight-row">
+                  <span className="label">Airline Code</span>
+                  <span className="value">{selectedFlight.airlineCode}</span>
+                </div>
+              )}
             </div>
 
             <div className="flight-actions">
@@ -1015,7 +1325,7 @@ ${isMilitary ? '\n**MILITARY AIRCRAFT**' : ''}
                   });
                 }
               }}>
-                Track Flight
+                📍 Track Flight
               </button>
             </div>
           </div>
