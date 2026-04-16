@@ -48,15 +48,6 @@ type: string;
 flag: string;
 }
 
-interface NewsEvent {
-lat: number;
-lon: number;
-name: string;
-url: string;
-tone: number;
-count: number;
-}
-
 const API_BASE = 'http://localhost:3001';
 
 const WorldView: React.FC = () => {
@@ -991,38 +982,23 @@ return;
 
 const fetchNews = async () => {
 try {
-const response = await fetch(`${API_BASE}/api/news/geo?q=conflict protest military disaster&timespan=7d`);
+const response = await fetch(`${API_BASE}/api/news/geo?q=conflict protest military disaster war&timespan=24h`);
 const data = await response.json();
 
 clearNews();
 
-if (data.events && data.events.length > 0) {
-const entities: Cesium.Entity[] = [];
+if (data.articles && data.articles.length > 0) {
+setNewsCount(data.articles.length);
 
-data.events.forEach((event: NewsEvent) => {
-if (!event.lat || !event.lon) return;
-
-const toneColor = event.tone < -5 ? Cesium.Color.RED :
-event.tone < 0 ? Cesium.Color.ORANGE :
-event.tone < 5 ? Cesium.Color.YELLOW :
-Cesium.Color.GREEN;
-
-const entity = viewer.entities.add({
-position: Cesium.Cartesian3.fromDegrees(event.lon, event.lat, 0),
-point: {
-pixelSize: Math.min(12, 6 + event.count),
-color: toneColor.withAlpha(0.8),
-outlineColor: Cesium.Color.WHITE,
-outlineWidth: 1,
-heightReference: Cesium.HeightReference.CLAMP_TO_GROUND
-},
-description: `**News Event**\n\n${event.name || 'Unknown'}\n\nTone: ${event.tone?.toFixed(1) || 0}\nMentions: ${event.count || 1}\n\n[View Article](${event.url || '#'})`
-});
-entities.push(entity);
-});
-
-newsEntitiesRef.current = entities;
-setNewsCount(data.events.length);
+const container = document.querySelector('.news-articles-container');
+if (container) {
+container.innerHTML = data.articles.slice(0, 10).map((article: any) => `
+<div class="news-item" onclick="window.open('${article.url}', '_blank')">
+<div class="news-title">${article.title?.substring(0, 80) || 'Untitled'}${article.title?.length > 80 ? '...' : ''}</div>
+<div class="news-meta">${article.source} • ${article.language}</div>
+</div>
+`).join('');
+}
 }
 } catch (error) {
 console.error('[NEWS] Error:', error);
@@ -1607,15 +1583,13 @@ Updated: {lastUpdate.toLocaleTimeString()}
 {layers.news && newsCount > 0 && (
 <div className="news-panel">
 <div className="news-panel-header">
-<span>📰 NEWS EVENTS</span>
-<span className="news-count">{newsCount} events</span>
+<span>📰 NEWS HEADLINES</span>
+<span className="news-count">{newsCount} articles</span>
 </div>
 <div className="news-panel-body">
-<p className="news-info">
-Showing geolocated news events from the last 7 days.
-Events colored by sentiment: <span style={{color: '#ef4444'}}>negative</span>, <span style={{color: '#f97316'}}>concerning</span>, <span style={{color: '#eab308'}}>neutral</span>, <span style={{color: '#22c55e'}}>positive</span>
-</p>
-<p className="news-hint">Click on markers to view event details. Toggle NEWS layer to enable/disable.</p>
+<div className="news-articles-container">
+<p className="news-loading">Loading news...</p>
+</div>
 </div>
 </div>
 )}

@@ -732,32 +732,38 @@ res.status(503).json({ error: 'News data unavailable', articles: [] });
 
 app.get('/api/news/geo', async (req, res) => {
 try {
-const query = req.query.q as string || '';
-const timespan = req.query.timespan as string || '7d';
+const query = req.query.q as string || 'conflict protest military disaster';
+const timespan = req.query.timespan as string || '24h';
 
-const geoUrl = `https://api.gdeltproject.org/api/v2/geo/geo?query=${encodeURIComponent(query || 'conflict protest military')}&timespan=${timespan}&format=json`;
+const docUrl = `https://api.gdeltproject.org/api/v2/doc/doc?query=${encodeURIComponent(query)}&mode=artlist&format=json&timespan=${timespan}&maxrecords=50`;
 
-const response = await fetch(geoUrl, {
+console.log('[PROXY] Fetching news from:', docUrl);
+
+const response = await fetch(docUrl, {
 signal: AbortSignal.timeout(30000),
 headers: { 'User-Agent': 'WorldView-OSINT/1.0' }
 });
 
-if (!response.ok) throw new Error(`GDELT GEO error: ${response.status}`);
+if (!response.ok) {
+console.error('[PROXY] GDELT error:', response.status);
+throw new Error(`GDELT error: ${response.status}`);
+}
+
 const data = await response.json();
 
-const events = (data.features || []).map((feature: any) => ({
-lat: feature.geometry?.coordinates?.[1] || 0,
-lon: feature.geometry?.coordinates?.[0] || 0,
-name: feature.properties?.name || '',
-url: feature.properties?.url || '',
-tone: feature.properties?.tone || 0,
-count: feature.properties?.count || 1
+const articles = (data.articles || []).slice(0, 30).map((article: any) => ({
+url: article.url,
+title: article.title,
+source: article.domain,
+pubDate: article.seendate,
+language: article.language,
+socialimage: article.socialimage
 }));
 
-res.json({ events, timestamp: Date.now() });
+res.json({ articles, timestamp: Date.now(), total: articles.length });
 } catch (error) {
-console.error('[PROXY] News GEO error:', error);
-res.status(503).json({ error: 'News geo data unavailable', events: [] });
+console.error('[PROXY] News error:', error);
+res.status(503).json({ error: 'News data unavailable', articles: [] });
 }
 });
 
