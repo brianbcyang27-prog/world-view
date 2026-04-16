@@ -103,7 +103,7 @@ const [currentTimeIndex, setCurrentTimeIndex] = useState(0);
 const [availableTimestamps, setAvailableTimestamps] = useState<number[]>([]);
 const [latency, setLatency] = useState<number | null>(null);
 const [lastUpdate, setLastUpdate] = useState<Date | null>(null);
-const [refreshInterval, setRefreshInterval] = useState(10000);
+const [refreshInterval, setRefreshInterval] = useState(1000);
 const [showSettings, setShowSettings] = useState(false);
   
   const handleTrackSatelliteRef = useRef<(name: string) => void>(() => {});
@@ -1232,11 +1232,13 @@ Updated: {lastUpdate.toLocaleTimeString()}
 <div className="setting-row">
 <label>Refresh Interval:</label>
 <select value={refreshInterval} onChange={(e) => setRefreshInterval(Number(e.target.value))}>
-<option value={5000}>5 seconds (Fast)</option>
-<option value={10000}>10 seconds (Default)</option>
+<option value={500}>0.5 seconds (Ultra Fast)</option>
+<option value={1000}>1 second (Fastest)</option>
+<option value={2000}>2 seconds</option>
+<option value={5000}>5 seconds</option>
+<option value={10000}>10 seconds</option>
 <option value={30000}>30 seconds</option>
 <option value={60000}>1 minute</option>
-<option value={300000}>5 minutes</option>
 </select>
 </div>
 <button className="close-settings" onClick={() => setShowSettings(false)}>Close</button>
