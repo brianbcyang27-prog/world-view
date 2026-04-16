@@ -10,6 +10,7 @@ gpsJamming: boolean;
 maritime: boolean;
 noflyzones: boolean;
 news: boolean;
+satelliteImagery: boolean;
 };
 
 interface SatelliteData {
@@ -78,7 +79,8 @@ satellites: true,
 gpsJamming: false,
 maritime: false,
 noflyzones: false,
-news: false
+news: false,
+satelliteImagery: false
 });
 
   const [shaderMode, setShaderMode] = useState<ShaderMode>('normal');
@@ -96,9 +98,13 @@ const [trackedSatellite, setTrackedSatellite] = useState<string | null>(null);
 const [selectedFlight, setSelectedFlight] = useState<any>(null);
 const [flightHistory, setFlightHistory] = useState<Map<string, {lat: number, lon: number, time: number}[]>>(new Map());
   
-  const [timelineMode, setTimelineMode] = useState(false);
-  const [currentTimeIndex, setCurrentTimeIndex] = useState(0);
-  const [availableTimestamps, setAvailableTimestamps] = useState<number[]>([]);
+const [timelineMode, setTimelineMode] = useState(false);
+const [currentTimeIndex, setCurrentTimeIndex] = useState(0);
+const [availableTimestamps, setAvailableTimestamps] = useState<number[]>([]);
+const [latency, setLatency] = useState<number | null>(null);
+const [lastUpdate, setLastUpdate] = useState<Date | null>(null);
+const [refreshInterval, setRefreshInterval] = useState(10000);
+const [showSettings, setShowSettings] = useState(false);
   
   const handleTrackSatelliteRef = useRef<(name: string) => void>(() => {});
   const clearOrbitPathRef = useRef<() => void>(() => {});
@@ -106,16 +112,16 @@ const [flightHistory, setFlightHistory] = useState<Map<string, {lat: number, lon
   useEffect(() => {
     if (!containerRef.current) return;
 
-    const initViewer = async () => {
-      try {
-        setLoading(true);
-        setError(null);
+const initViewer = async () => {
+try {
+setLoading(true);
+setError(null);
 
-        const openStreetMapProvider = new Cesium.OpenStreetMapImageryProvider({
-          url: 'https://tile.openstreetmap.org/'
-        });
+const openStreetMapProvider = new Cesium.OpenStreetMapImageryProvider({
+url: 'https://tile.openstreetmap.org/'
+});
 
-        const cesiumViewer = new Cesium.Viewer(containerRef.current!, {
+const cesiumViewer = new Cesium.Viewer(containerRef.current!, {
           baseLayerPicker: false,
           geocoder: false,
           homeButton: false,
@@ -299,11 +305,15 @@ const details = detailsJson ? JSON.parse(detailsJson) : {};
     }
 
 const fetchFlights = async () => {
-    setFlightsLoading(true);
-    try {
-      const response = await fetch(`${API_BASE}/api/flights`);
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      const data = await response.json();
+setFlightsLoading(true);
+const startTime = Date.now();
+try {
+const response = await fetch(`${API_BASE}/api/flights`);
+const elapsed = Date.now() - startTime;
+setLatency(elapsed);
+if (!response.ok) throw new Error(`HTTP ${response.status}`);
+const data = await response.json();
+setLastUpdate(new Date());
 
       clearFlights();
 
@@ -673,14 +683,14 @@ Status: ${onGround ? '🛫 On Ground' : '✈️ Airborne'}
 *Click to see full details*`;
   };
 
-    fetchFlights();
-    const interval = setInterval(fetchFlights, 30000);
+fetchFlights();
+const interval = setInterval(fetchFlights, refreshInterval);
 
-    return () => {
-      clearInterval(interval);
-      clearFlights();
-    };
-  }, [viewer, layers.flights]);
+return () => {
+clearInterval(interval);
+clearFlights();
+};
+}, [viewer, layers.flights, refreshInterval]);
 
   // Satellites layer
   useEffect(() => {
@@ -1028,7 +1038,28 @@ clearNews();
 };
 }, [viewer, layers.news]);
 
-  // Shader mode effects
+// Satellite imagery layer effect
+useEffect(() => {
+if (!viewer) return;
+
+const imageryLayers = viewer.scene.imageryLayers;
+
+if (layers.satelliteImagery) {
+const satelliteLayer = imageryLayers.addImageryProvider(
+new Cesium.UrlTemplateImageryProvider({
+url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+maximumLevel: 19
+})
+);
+satelliteLayer.alpha = 0.85;
+} else {
+if (imageryLayers.length > 1) {
+imageryLayers.remove(imageryLayers.get(imageryLayers.length - 1));
+}
+}
+}, [viewer, layers.satelliteImagery]);
+
+// Shader mode effects
   useEffect(() => {
     if (!viewer) return;
 
@@ -1172,11 +1203,47 @@ clearNews();
     }
   };
 
-  return (
-    <div className="worldview-container">
-      <div ref={containerRef} className="cesium-viewer" />
+return (
+<div className="worldview-container">
+<div ref={containerRef} className="cesium-viewer" />
 
-      {loading && (
+{/* Network Status Indicator */}
+<div className="network-status">
+<div className={`ping-indicator ${latency === null ? 'loading' : latency < 100 ? 'good' : latency < 300 ? 'medium' : 'poor'}`}>
+<span className="ping-dot"></span>
+<span className="ping-text">
+{latency === null ? 'Connecting...' : `${latency}ms`}
+</span>
+</div>
+{lastUpdate && (
+<div className="last-update">
+Updated: {lastUpdate.toLocaleTimeString()}
+</div>
+)}
+<button className="settings-btn" onClick={() => setShowSettings(!showSettings)}>
+⚙️
+</button>
+</div>
+
+{/* Settings Panel */}
+{showSettings && (
+<div className="settings-panel">
+<h4>Data Refresh Settings</h4>
+<div className="setting-row">
+<label>Refresh Interval:</label>
+<select value={refreshInterval} onChange={(e) => setRefreshInterval(Number(e.target.value))}>
+<option value={5000}>5 seconds (Fast)</option>
+<option value={10000}>10 seconds (Default)</option>
+<option value={30000}>30 seconds</option>
+<option value={60000}>1 minute</option>
+<option value={300000}>5 minutes</option>
+</select>
+</div>
+<button className="close-settings" onClick={() => setShowSettings(false)}>Close</button>
+</div>
+)}
+
+{loading && (
         <div className="loading-overlay">
           <div className="loading-spinner" />
           <span>Initializing Globe...</span>
@@ -1448,7 +1515,7 @@ clearNews();
             >
               <input type="checkbox" checked={layers[key]} readOnly />
               <label>
-                {key.toUpperCase().replace('GPSJAMMING', 'GPS JAM').replace('NOFLYZONES', 'NO-FLY ZONES').replace('NEWS', '📰 NEWS')}
+                {key.toUpperCase().replace('GPSJAMMING', 'GPS JAM').replace('NOFLYZONES', 'NO-FLY ZONES').replace('NEWS', '📰 NEWS').replace('SATELLITEIMAGERY', '🛰️ SATELLITE')}
                 {(key === 'flights' && flightsLoading) && ' ⏳'}
                 {(key === 'satellites' && satellitesLoading) && ' ⏳'}
               </label>

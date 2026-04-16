@@ -774,3 +774,141 @@ content: '•';
 margin-left: 30px;
 color: rgba(255, 255, 255, 0.5);
 }
+
+/* Network Status Indicator */
+.network-status {
+position: absolute;
+top: 10px;
+right: 10px;
+display: flex;
+align-items: center;
+gap: 15px;
+background: rgba(10, 10, 10, 0.9);
+border: 1px solid var(--border-color);
+border-radius: 4px;
+padding: 8px 12px;
+z-index: 1001;
+}
+
+.ping-indicator {
+display: flex;
+align-items: center;
+gap: 6px;
+font-size: 11px;
+}
+
+.ping-dot {
+width: 8px;
+height: 8px;
+border-radius: 50%;
+background: var(--accent-cyan);
+animation: pulse 1s infinite;
+}
+
+.ping-indicator.good .ping-dot {
+background: #22c55e;
+}
+
+.ping-indicator.medium .ping-dot {
+background: #eab308;
+}
+
+.ping-indicator.poor .ping-dot {
+background: #ef4444;
+}
+
+.ping-indicator.loading .ping-dot {
+background: #6b7280;
+animation: none;
+}
+
+.ping-text {
+color: var(--text-secondary);
+}
+
+.last-update {
+font-size: 10px;
+color: var(--text-secondary);
+opacity: 0.8;
+}
+
+.settings-btn {
+background: transparent;
+border: 1px solid var(--border-color);
+color: var(--text-secondary);
+padding: 4px 8px;
+border-radius: 3px;
+cursor: pointer;
+font-size: 14px;
+transition: all 0.2s;
+}
+
+.settings-btn:hover {
+background: var(--bg-tertiary);
+color: var(--accent-cyan);
+border-color: var(--accent-cyan);
+}
+
+/* Settings Panel */
+.settings-panel {
+position: absolute;
+top: 60px;
+right: 10px;
+background: rgba(10, 10, 10, 0.95);
+border: 1px solid var(--accent-cyan);
+border-radius: 4px;
+padding: 15px;
+min-width: 250px;
+z-index: 1002;
+}
+
+.settings-panel h4 {
+margin: 0 0 12px 0;
+color: var(--accent-cyan);
+font-size: 13px;
+font-weight: 600;
+}
+
+.setting-row {
+display: flex;
+justify-content: space-between;
+align-items: center;
+margin-bottom: 12px;
+}
+
+.setting-row label {
+font-size: 11px;
+color: var(--text-secondary);
+}
+
+.setting-row select {
+background: var(--bg-tertiary);
+border: 1px solid var(--border-color);
+color: var(--text-primary);
+padding: 5px 10px;
+border-radius: 3px;
+font-size: 11px;
+cursor: pointer;
+}
+
+.setting-row select:focus {
+outline: none;
+border-color: var(--accent-cyan);
+}
+
+.close-settings {
+width: 100%;
+background: var(--bg-tertiary);
+border: 1px solid var(--border-color);
+color: var(--text-primary);
+padding: 8px;
+border-radius: 3px;
+font-size: 11px;
+cursor: pointer;
+transition: all 0.2s;
+}
+
+.close-settings:hover {
+background: rgba(0, 255, 255, 0.1);
+border-color: var(--accent-cyan);
+}
