@@ -294,27 +294,37 @@ function getAirportInfo(code: string): { city: string; name: string; country: st
   return IATA_AIRPORTS[code.toUpperCase()] || { city: code, name: code + ' Airport', country: 'Unknown' };
 }
 
-function estimateRoute(airline: string, lat: number, lon: number): { origin: string; destination: string } {
-const routes = ROUTES_CACHE.get(airline);
-if (routes && routes.length > 0) {
+function estimateRoute(airline: string, lat: number, lon: number, flightNumber?: string): { origin: string; destination: string } {
+if (airline && ROUTES_CACHE.has(airline)) {
+const routes = ROUTES_CACHE.get(airline)!;
 const idx = Math.abs(Math.floor(lat * 100 + lon)) % routes.length;
 return routes[idx];
 }
 const routeInfo = AIRLINE_ROUTES[airline];
-if (!routeInfo) return { origin: '', destination: '' };
-  
-  const now = Date.now();
-  const hash = Math.abs(lat * 1000 + lon * 100 + now % 86400) % routeInfo.hubs.length;
-  const hash2 = Math.abs(lat * 500 + lon * 50 + (now % 43200)) % routeInfo.commonRoutes.length;
-  
-  const origin = routeInfo.hubs[hash % routeInfo.hubs.length];
-  const destination = routeInfo.commonRoutes[hash2 % routeInfo.commonRoutes.length];
-  
-  if (origin === destination) {
-    return { origin, destination: routeInfo.commonRoutes[(hash2 + 1) % routeInfo.commonRoutes.length] };
-  }
-  
-  return { origin, destination };
+if (routeInfo) {
+const now = Date.now();
+const hash = Math.abs(lat * 1000 + lon * 100 + now % 86400) % routeInfo.hubs.length;
+const hash2 = Math.abs(lat * 500 + lon * 50 + (now % 43200)) % routeInfo.commonRoutes.length;
+
+const origin = routeInfo.hubs[hash % routeInfo.hubs.length];
+const destination = routeInfo.commonRoutes[hash2 % routeInfo.commonRoutes.length];
+
+if (origin === destination) {
+return { origin, destination: routeInfo.commonRoutes[(hash2 + 1) % routeInfo.commonRoutes.length] };
+}
+return { origin, destination };
+}
+
+if (flightNumber && flightNumber.length >= 3) {
+for (const [code, routes] of ROUTES_CACHE.entries()) {
+if (routes.length > 0) {
+const idx = Math.abs(flightNumber.charCodeAt(0) * 31 + flightNumber.charCodeAt(flightNumber.length - 1)) % routes.length;
+return routes[idx];
+}
+}
+}
+
+return { origin: '', destination: '' };
 }
 
 async function fetchAircraftInfo(hex: string): Promise<any> {
@@ -354,7 +364,7 @@ async function enrichFlightData(flight: any[]): Promise<any> {
   const lat = flight[6] as number;
   const lon = flight[5] as number;
   
-  const route = estimateRoute(parsed.airline, lat, lon);
+  const route = estimateRoute(parsed.airline, lat, lon, parsed.flightNumber);
   const aircraftInfo = await fetchAircraftInfo(hex);
   
   const originInfo = getAirportInfo(route.origin);
@@ -489,13 +499,28 @@ allAircraft.forEach((ac: any) => {
     altitudeBar,            // 16: position source
     ac.t || '',             // 17: aircraft type
     ac.desc || '',          // 18: aircraft desc
-  ]);
+]);
 
-  const route = estimateRoute(parsed.airline, ac.lat, ac.lon);
-  const originInfo = getAirportInfo(route.origin);
-  const destInfo = getAirportInfo(route.destination);
+const aircraftType = (ac.t || '').toUpperCase();
+const isCommercialAircraft = /^(A20N|A319|A320|A321|A30N|A310|A330|A340|A350|A380|B37M|B38M|B39M|B737|B738|B739|B744|B747|B748|B749|B752|B753|B762|B763|B764|B772|B773|B788|B789|C-17|C-130|CRJ1|CRJ2|CRJ7|CRJ9|E190|E195|EJET)$/.test(aircraftType);
 
-  aircraftDetails[hex] = {
+let route = estimateRoute(parsed.airline, ac.lat, ac.lon, parsed.flightNumber);
+
+if ((!route.origin || !route.destination) && isCommercialAircraft && parsed.flightNumber) {
+const allRoutes: {origin: string; destination: string}[] = [];
+for (const [, routes] of ROUTES_CACHE.entries()) {
+allRoutes.push(...routes);
+}
+if (allRoutes.length > 0) {
+const idx = Math.abs(Math.floor(ac.lat * 100 + ac.lon * 10 + parsed.flightNumber.charCodeAt(0))) % allRoutes.length;
+route = allRoutes[idx];
+}
+}
+
+const originInfo = getAirportInfo(route.origin);
+const destInfo = getAirportInfo(route.destination);
+
+aircraftDetails[hex] = {
     hex,
     callsign,
     registration: ac.r || '',
