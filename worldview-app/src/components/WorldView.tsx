@@ -94,7 +94,7 @@ const [currentTimeIndex, setCurrentTimeIndex] = useState(0);
 const [availableTimestamps, setAvailableTimestamps] = useState<number[]>([]);
 const [latency, setLatency] = useState<number | null>(null);
 const [lastUpdate, setLastUpdate] = useState<Date | null>(null);
-const [refreshInterval, setRefreshInterval] = useState(1000);
+const [refreshInterval, setRefreshInterval] = useState(2000);
 const [showSettings, setShowSettings] = useState(false);
   
   const handleTrackSatelliteRef = useRef<(name: string) => void>(() => {});
