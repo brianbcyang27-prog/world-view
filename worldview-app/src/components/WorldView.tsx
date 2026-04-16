@@ -55,14 +55,15 @@ const WorldView: React.FC = () => {
   const viewerRef = useRef<Cesium.Viewer | null>(null);
   const [viewer, setViewer] = useState<Cesium.Viewer | null>(null);
   
-  const flightEntitiesRef = useRef<Cesium.Entity[]>([]);
+const flightEntitiesRef = useRef<Cesium.Entity[]>([]);
+  const flightEntitiesByHexRef = useRef<Map<string, Cesium.Entity[]>>(new Map());
   const satelliteEntitiesRef = useRef<Cesium.Entity[]>([]);
   const gpsJammingEntitiesRef = useRef<Cesium.Entity[]>([]);
   const maritimeEntitiesRef = useRef<Cesium.Entity[]>([]);
-const noFlyZoneEntitiesRef = useRef<Cesium.Entity[]>([]);
-const newsEntitiesRef = useRef<Cesium.Entity[]>([]);
-const orbitPathRef = useRef<Cesium.Entity | null>(null);
-const satellitesDataRef = useRef<SatelliteData[]>([]);
+  const noFlyZoneEntitiesRef = useRef<Cesium.Entity[]>([]);
+  const newsEntitiesRef = useRef<Cesium.Entity[]>([]);
+  const orbitPathRef = useRef<Cesium.Entity | null>(null);
+  const satellitesDataRef = useRef<SatelliteData[]>([]);
 
 const [layers, setLayers] = useState<LayerVisibility>({
 flights: true,
@@ -79,7 +80,6 @@ satelliteImagery: false
   const [satelliteCount, setSatelliteCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [flightsLoading, setFlightsLoading] = useState(false);
   const [satellitesLoading, setSatellitesLoading] = useState(false);
   const [gpsJammingCount, setGpsJammingCount] = useState(0);
   const [maritimeCount, setMaritimeCount] = useState(0);
@@ -95,8 +95,51 @@ const [availableTimestamps, setAvailableTimestamps] = useState<number[]>([]);
 const [latency, setLatency] = useState<number | null>(null);
 const [lastUpdate, setLastUpdate] = useState<Date | null>(null);
 const [refreshInterval, setRefreshInterval] = useState(2000);
-const [showSettings, setShowSettings] = useState(false);
-  
+  const [showSettings, setShowSettings] = useState(false);
+  const [showRoutes, setShowRoutes] = useState(true);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState<any[]>([]);
+  const [showSearchResults, setShowSearchResults] = useState(false);
+
+  const trackedFlightHexRef = useRef<string | null>(null);
+  const allFlightsDataRef = useRef<any[]>([]);
+
+  const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const query = e.target.value;
+    setSearchQuery(query);
+    if (!query.trim()) {
+      setSearchResults([]);
+      setShowSearchResults(false);
+      return;
+    }
+    const q = query.toLowerCase();
+    const results = allFlightsDataRef.current.filter(f => {
+      const callsignMatch = f.callsign?.toLowerCase().includes(q);
+      const flightNumMatch = f.flightNumber?.toLowerCase().includes(q);
+      const airlineMatch = f.airline?.toLowerCase().includes(q);
+      const hexMatch = f.hex?.toLowerCase().includes(q);
+      const originMatch = f.origin?.toLowerCase().includes(q);
+      const destMatch = f.destination?.toLowerCase().includes(q);
+      return callsignMatch || flightNumMatch || airlineMatch || hexMatch || originMatch || destMatch;
+    }).slice(0, 20);
+    setSearchResults(results);
+    setShowSearchResults(results.length > 0);
+  };
+
+  const selectSearchResult = (flight: any) => {
+    const entity = viewerRef.current?.entities.getById(`flight_${flight.hex}`);
+    if (entity) {
+      trackedFlightHexRef.current = flight.hex;
+      viewerRef.current!.selectedEntity = entity;
+      viewerRef.current!.camera.flyTo({
+        destination: Cesium.Cartesian3.fromDegrees(flight.lon, flight.lat, 500000),
+        duration: 1.5
+      });
+    }
+    setShowSearchResults(false);
+    setSearchQuery('');
+  };
+
   const handleTrackSatelliteRef = useRef<(name: string) => void>(() => {});
   const clearOrbitPathRef = useRef<() => void>(() => {});
 
@@ -149,10 +192,11 @@ cesiumViewer.selectedEntityChanged.addEventListener((selectedEntity: Cesium.Enti
       
 const entityId = selectedEntity.id as string || '';
 
-          // Check if it's a flight
-          if (entityId.startsWith('flight_')) {
-            const hex = entityId.replace('flight_', '');
-            const props = selectedEntity.properties;
+// Check if it's a flight
+    if (entityId.startsWith('flight_')) {
+      const hex = entityId.replace('flight_', '');
+      trackedFlightHexRef.current = hex;
+      const props = selectedEntity.properties;
 
             if (props) {
               // Helper to safely get property value from Cesium Entity properties
@@ -278,251 +322,334 @@ const details = detailsJson ? JSON.parse(detailsJson) : {};
       .catch(console.error);
   }, [timelineMode]);
 
-  // Flights layer
+// Flights layer
   useEffect(() => {
     if (!viewer) return;
 
-    const clearFlights = () => {
-      flightEntitiesRef.current.forEach(entity => {
+    const clearFlightEntities = (hex: string) => {
+      const entities = flightEntitiesByHexRef.current.get(hex) || [];
+      entities.forEach(entity => {
         try { viewer.entities.remove(entity); } catch {}
       });
+      flightEntitiesByHexRef.current.delete(hex);
+    };
+
+    const clearAllFlights = () => {
+      flightEntitiesByHexRef.current.forEach((entities, _hex) => {
+        entities.forEach(entity => {
+          try { viewer.entities.remove(entity); } catch {}
+        });
+      });
+      flightEntitiesByHexRef.current.clear();
       flightEntitiesRef.current = [];
     };
 
     if (!layers.flights) {
-      clearFlights();
+      clearAllFlights();
       setFlightCount(0);
       return;
     }
 
-const fetchFlights = async () => {
-setFlightsLoading(true);
-const startTime = Date.now();
-try {
-const response = await fetch(`${API_BASE}/api/flights`);
-const elapsed = Date.now() - startTime;
-setLatency(elapsed);
-if (!response.ok) throw new Error(`HTTP ${response.status}`);
-const data = await response.json();
-setLastUpdate(new Date());
+    const fetchFlights = async () => {
+      const startTime = Date.now();
+      try {
+        const response = await fetch(`${API_BASE}/api/flights`);
+        const elapsed = Date.now() - startTime;
+        setLatency(elapsed);
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const data = await response.json();
+        setLastUpdate(new Date());
 
-      clearFlights();
+        if (!data.states || data.states.length === 0) {
+          clearAllFlights();
+          setFlightCount(0);
+          return;
+        }
 
-      if (data.states && data.states.length > 0) {
         const validFlights = data.states.filter((state: unknown[]) =>
           state[5] !== null && state[6] !== null &&
           !isNaN(state[5] as number) && !isNaN(state[6] as number)
         );
 
-        const entities: Cesium.Entity[] = [];
-        const newHistory = new Map(flightHistory);
+        const newFlightHexes = new Set<string>();
+        const newHistory = new Map<string, {lat: number, lon: number, time: number}[]>();
+        const CHUNK_SIZE = 50;
+        const allFlightsHexes = new Set(validFlights.map((s: unknown[]) => s[0] as string));
 
-        validFlights.forEach((state: unknown[]) => {
-          try {
-            const hex = state[0] as string;
-            const lat = state[6] as number;
-            const lon = state[5] as number;
-            const alt = ((state[7] as number) || 10000) * 0.3048;
-            const groundSpeed = state[9] as number || 0;
-            const track = state[10] as number || 0;
-            const flightCallsign = (state[1] as string)?.trim() || 'UNKNOWN';
-            const registration = state[2] as string || '';
-            const aircraftType = (state[18] as string) || '';
-const aircraftDesc = state[19] as string || '';
-        const onGround = state[8] as boolean || false;
-        const squawk = state[14] as string || '';
-
-        // Get detailed info from the full data
-        const details = data.aircraftDetails?.[hex] || {};
-        const airline = details.airline || '';
-        const flightNumber = details.flightNumber || '';
-        const airlineCode = details.airlineCode || '';
-        const origin = details.origin || '';
-        const originCity = details.originCity || '';
-        const originCountry = details.originCountry || '';
-        const originName = details.originName || '';
-        const destination = details.destination || '';
-        const destinationCity = details.destinationCity || '';
-        const destinationCountry = details.destinationCountry || '';
-        const destinationName = details.destinationName || '';
-        const isMilitary = details.mil || aircraftType.includes('C-') || aircraftType.includes('KC-') || aircraftType.includes('F-') || aircraftType.includes('H60') || flightCallsign.includes('RCH') || flightCallsign.includes('CMV');
-
-        // Update flight history for trail
-        const history = newHistory.get(hex) || [];
-        history.push({ lat, lon, time: Date.now() });
-        // Keep last 25 positions for smoother trails
-        if (history.length > 25) history.shift();
-        newHistory.set(hex, history);
-
-        // Create flight entity with all data
-        const entity = viewer.entities.add({
-          id: `flight_${hex}`,
-          name: flightCallsign || hex,
-          position: Cesium.Cartesian3.fromDegrees(lon, lat, alt),
-          // Main aircraft point - larger for military
-          point: {
-            pixelSize: isMilitary ? 10 : 7,
-            color: isMilitary ? Cesium.Color.ORANGE : (details.emergency !== 'none' ? Cesium.Color.RED : Cesium.Color.CYAN),
-            outlineColor: isMilitary ? Cesium.Color.DARKORANGE : Cesium.Color.BLACK,
-            outlineWidth: 2,
-            scaleByDistance: new Cesium.NearFarScalar(1.5e2, 3, 1.5e7, 0.5),
-          },
-          // Store all data for the info panel
-          properties: {
-            hex,
-            callsign: flightCallsign,
-            registration: details.registration || registration,
-            aircraftType: details.aircraftType || aircraftType,
-            aircraftDesc: details.aircraftDesc || aircraftDesc,
-            lat,
-            lon,
-            altFeet: details.altBar || Math.round(alt / 0.3048),
-            groundSpeedKnots: Math.round(details.groundSpeed || groundSpeed),
-            groundSpeedKmh: details.groundSpeedKmh || Math.round((details.groundSpeed || groundSpeed) * 1.852),
-            track: Math.round(details.track || track),
-            trackDirection: details.trackDirection || getCardinalDirection(details.track || track),
-            onGround: details.onGround || onGround,
-            squawk: details.squawk || squawk,
-            isMilitary,
-            // Vertical speed
-            verticalSpeed: details.verticalSpeed || `${details.baro_rate > 0 ? '+' : ''}${Math.round((details.baro_rate || 0) * 196.85)} ft/min`,
-            verticalSpeedFpm: details.verticalSpeedFpm || Math.round((details.baro_rate || 0) * 196.85),
-            // Signal quality
-            nac_p: details.nac_p || 0,
-            nic: details.nic || 0,
-            positionAccuracy: details.positionAccuracy || getPositionAccuracy(details.nac_p, details.nic),
-            signalStrength: details.rssi ? `${details.rssi.toFixed(1)} dBm` : 'Unknown',
-            rssi: details.rssi || null,
-            // Airline info
-            airline,
-            flightNumber,
-            airlineCode,
-            // Route info
-            origin,
-            originCity,
-            originCountry,
-            originName,
-            destination,
-            destinationCity,
-            destinationCountry,
-            destinationName,
-            // Additional details
-            emergency: details.emergency || 'none',
-            alert: details.alert || false,
-            distance: details.distance || 0,
-            direction: details.direction || 0,
-            navAltitudeMcp: details.navAltitudeMcp || null,
-            navHeading: details.navHeading || null,
-            navQnh: details.navQnh || null,
-            operator: details.operator || '',
-            year: details.year || '',
-            messages: details.messages || 0,
-            seen: details.seen || 0,
-            sil: details.sil || 3,
-            silType: details.silType || 'perhour',
-            category: details.category || '',
-            altGeom: details.altGeom || 0,
-            details: JSON.stringify(details),
-          },
-          description: buildFlightDescription(hex, flightCallsign, details.registration || registration, details.aircraftType || aircraftType, details.aircraftDesc || aircraftDesc, lat, lon, alt, details.groundSpeed || groundSpeed, details.track || track, details.onGround || onGround, isMilitary, airline, flightNumber, origin, originCity, destination, destinationCity, destinationName, details.emergency)
+        let existingHexes = new Set(flightEntitiesByHexRef.current.keys());
+        existingHexes.forEach(hex => {
+          if (!allFlightsHexes.has(hex)) {
+            clearFlightEntities(hex);
+          }
         });
-        entities.push(entity);
 
-            // Add heading indicator (small triangle pointing direction)
-            if (!onGround && groundSpeed > 50) {
-              const headingEntity = viewer.entities.add({
-                id: `heading_${hex}`,
-                position: Cesium.Cartesian3.fromDegrees(lon, lat, alt + 500),
-                point: {
-                  pixelSize: 3,
-                  color: isMilitary ? Cesium.Color.ORANGE.withAlpha(0.7) : Cesium.Color.CYAN.withAlpha(0.7),
-                },
-              });
-              entities.push(headingEntity);
-}
+        const processChunk = (startIdx: number) => {
+          const endIdx = Math.min(startIdx + CHUNK_SIZE, validFlights.length);
+          const chunk = validFlights.slice(startIdx, endIdx);
 
-        // Add route trail from history
-        const historyPoints = newHistory.get(hex);
-        if (historyPoints && historyPoints.length > 2) {
-          const trailPositions: number[] = [];
-          historyPoints.forEach(p => {
-            trailPositions.push(p.lon, p.lat, alt);
-          });
+          chunk.forEach((state: unknown[]) => {
+            try {
+              const hex = state[0] as string;
+              const lat = state[6] as number;
+              const lon = state[5] as number;
+              const alt = ((state[7] as number) || 10000) * 0.3048;
+              const groundSpeed = state[9] as number || 0;
+              const track = state[10] as number || 0;
+              const flightCallsign = (state[1] as string)?.trim() || 'UNKNOWN';
+              const registration = state[2] as string || '';
+              const aircraftType = (state[18] as string) || '';
+              const aircraftDesc = state[19] as string || '';
+              const onGround = state[8] as boolean || false;
+              const squawk = state[14] as string || '';
 
-          const trailEntity = viewer.entities.add({
-            id: `trail_${hex}`,
-            polyline: {
-              positions: Cesium.Cartesian3.fromDegreesArrayHeights(trailPositions),
-              width: 1,
-              material: new Cesium.PolylineDashMaterialProperty({
-                color: isMilitary ? Cesium.Color.ORANGE.withAlpha(0.4) : Cesium.Color.CYAN.withAlpha(0.4),
-                dashLength: 8,
-              })
+              const details = data.aircraftDetails?.[hex] || {};
+              const airline = details.airline || '';
+              const flightNumber = details.flightNumber || '';
+              const airlineCode = details.airlineCode || '';
+              const origin = details.origin || '';
+              const originCity = details.originCity || '';
+              const originCountry = details.originCountry || '';
+              const originName = details.originName || '';
+              const destination = details.destination || '';
+              const destinationCity = details.destinationCity || '';
+              const destinationCountry = details.destinationCountry || '';
+              const destinationName = details.destinationName || '';
+              const isMilitary = details.mil || aircraftType.includes('C-') || aircraftType.includes('KC-') || aircraftType.includes('F-') || aircraftType.includes('H60') || flightCallsign.includes('RCH') || flightCallsign.includes('CMV');
+
+              const history = flightHistory.get(hex) || [];
+              history.push({ lat, lon, time: Date.now() });
+              if (history.length > 25) history.shift();
+              newHistory.set(hex, history);
+
+              newFlightHexes.add(hex);
+              const existingEntities = flightEntitiesByHexRef.current.get(hex) || [];
+              const mainEntity = existingEntities.find(e => e.id === `flight_${hex}`);
+
+              if (mainEntity) {
+                mainEntity.position = new Cesium.ConstantPositionProperty(Cesium.Cartesian3.fromDegrees(lon, lat, alt));
+
+                const historyPoints = newHistory.get(hex);
+                const trailEntity = existingEntities.find(e => e.id === `trail_${hex}`);
+                if (trailEntity && historyPoints && historyPoints.length > 2 && showRoutes) {
+                  const trailPositions: number[] = [];
+                  historyPoints.forEach(p => trailPositions.push(p.lon, p.lat, alt));
+                  (trailEntity.polyline as any).positions = new Cesium.ConstantProperty(Cesium.Cartesian3.fromDegreesArrayHeights(trailPositions));
+                }
+
+                const routeEntity = existingEntities.find(e => e.id === `route_${hex}`);
+                if (destination && !onGround && showRoutes) {
+                  const destCoords = getAirportCoords(destination);
+                  if (destCoords && routeEntity) {
+                    (routeEntity.polyline as any).positions = new Cesium.ConstantProperty(
+                      Cesium.Cartesian3.fromDegreesArrayHeights([lon, lat, alt, destCoords.lon, destCoords.lat, 0])
+                    );
+                  }
+                } else if (routeEntity && !showRoutes) {
+                  viewer.entities.remove(routeEntity);
+                  const idx = existingEntities.indexOf(routeEntity);
+                  if (idx > -1) existingEntities.splice(idx, 1);
+                }
+              } else {
+                const newEntities: Cesium.Entity[] = [];
+
+                const entity = viewer.entities.add({
+                  id: `flight_${hex}`,
+                  name: flightCallsign || hex,
+                  position: Cesium.Cartesian3.fromDegrees(lon, lat, alt),
+                  point: {
+                    pixelSize: isMilitary ? 10 : 7,
+                    color: isMilitary ? Cesium.Color.ORANGE : (details.emergency !== 'none' ? Cesium.Color.RED : Cesium.Color.CYAN),
+                    outlineColor: isMilitary ? Cesium.Color.DARKORANGE : Cesium.Color.BLACK,
+                    outlineWidth: 2,
+                    scaleByDistance: new Cesium.NearFarScalar(1.5e2, 3, 1.5e7, 0.5),
+                  },
+                  properties: {
+                    hex,
+                    callsign: flightCallsign,
+                    registration: details.registration || registration,
+                    aircraftType: details.aircraftType || aircraftType,
+                    aircraftDesc: details.aircraftDesc || aircraftDesc,
+                    lat,
+                    lon,
+                    altFeet: details.altBar || Math.round(alt / 0.3048),
+                    groundSpeedKnots: Math.round(details.groundSpeed || groundSpeed),
+                    groundSpeedKmh: details.groundSpeedKmh || Math.round((details.groundSpeed || groundSpeed) * 1.852),
+                    track: Math.round(details.track || track),
+                    trackDirection: details.trackDirection || getCardinalDirection(details.track || track),
+                    onGround: details.onGround || onGround,
+                    squawk: details.squawk || squawk,
+                    isMilitary,
+                    verticalSpeed: details.verticalSpeed || `${details.baro_rate > 0 ? '+' : ''}${Math.round((details.baro_rate || 0) * 196.85)} ft/min`,
+                    verticalSpeedFpm: details.verticalSpeedFpm || Math.round((details.baro_rate || 0) * 196.85),
+                    nac_p: details.nac_p || 0,
+                    nic: details.nic || 0,
+                    positionAccuracy: details.positionAccuracy || getPositionAccuracy(details.nac_p, details.nic),
+                    signalStrength: details.rssi ? `${details.rssi.toFixed(1)} dBm` : 'Unknown',
+                    rssi: details.rssi || null,
+                    airline,
+                    flightNumber,
+                    airlineCode,
+                    origin,
+                    originCity,
+                    originCountry,
+                    originName,
+                    destination,
+                    destinationCity,
+                    destinationCountry,
+                    destinationName,
+                    emergency: details.emergency || 'none',
+                    alert: details.alert || false,
+                    distance: details.distance || 0,
+                    direction: details.direction || 0,
+                    navAltitudeMcp: details.navAltitudeMcp || null,
+                    navHeading: details.navHeading || null,
+                    navQnh: details.navQnh || null,
+                    operator: details.operator || '',
+                    year: details.year || '',
+                    messages: details.messages || 0,
+                    seen: details.seen || 0,
+                    sil: details.sil || 3,
+                    silType: details.silType || 'perhour',
+                    category: details.category || '',
+                    altGeom: details.altGeom || 0,
+                    details: JSON.stringify(details),
+                  },
+                  description: buildFlightDescription(hex, flightCallsign, details.registration || registration, details.aircraftType || aircraftType, details.aircraftDesc || aircraftDesc, lat, lon, alt, details.groundSpeed || groundSpeed, details.track || track, details.onGround || onGround, isMilitary, airline, flightNumber, origin, originCity, destination, destinationCity, destinationName, details.emergency)
+                });
+                newEntities.push(entity);
+
+                if (!onGround && groundSpeed > 50) {
+                  const headingEntity = viewer.entities.add({
+                    id: `heading_${hex}`,
+                    position: Cesium.Cartesian3.fromDegrees(lon, lat, alt + 500),
+                    point: {
+                      pixelSize: 3,
+                      color: isMilitary ? Cesium.Color.ORANGE.withAlpha(0.7) : Cesium.Color.CYAN.withAlpha(0.7),
+                    },
+                  });
+                  newEntities.push(headingEntity);
+                }
+
+                const historyPoints = newHistory.get(hex);
+                if (historyPoints && historyPoints.length > 2 && showRoutes) {
+                  const trailPositions: number[] = [];
+                  historyPoints.forEach(p => trailPositions.push(p.lon, p.lat, alt));
+                  const trailEntity = viewer.entities.add({
+                    id: `trail_${hex}`,
+                    polyline: {
+                      positions: Cesium.Cartesian3.fromDegreesArrayHeights(trailPositions),
+                      width: 1,
+                      material: new Cesium.PolylineDashMaterialProperty({
+                        color: isMilitary ? Cesium.Color.ORANGE.withAlpha(0.4) : Cesium.Color.CYAN.withAlpha(0.4),
+                        dashLength: 8,
+                      })
+                    }
+                  });
+                  newEntities.push(trailEntity);
+                }
+
+                if (destination && !onGround && showRoutes) {
+                  const destCoords = getAirportCoords(destination);
+                  if (destCoords) {
+                    const routeEntity = viewer.entities.add({
+                      id: `route_${hex}`,
+                      polyline: {
+                        positions: Cesium.Cartesian3.fromDegreesArrayHeights([lon, lat, alt, destCoords.lon, destCoords.lat, 0]),
+                        width: 2,
+                        material: new Cesium.PolylineGlowMaterialProperty({
+                          glowPower: 0.3,
+                          color: isMilitary ? Cesium.Color.ORANGE.withAlpha(0.7) : Cesium.Color.LIME.withAlpha(0.7),
+                        })
+                      }
+                    });
+                    newEntities.push(routeEntity);
+
+                    const destMarker = viewer.entities.add({
+                      id: `dest_${hex}`,
+                      position: Cesium.Cartesian3.fromDegrees(destCoords.lon, destCoords.lat, 0),
+                      point: {
+                        pixelSize: 8,
+                        color: Cesium.Color.YELLOW.withAlpha(0.8),
+                        outlineColor: Cesium.Color.WHITE,
+                        outlineWidth: 2,
+                      },
+                      label: {
+                        text: destination,
+                        font: '10px JetBrains Mono',
+                        fillColor: Cesium.Color.YELLOW,
+                        outlineColor: Cesium.Color.BLACK,
+                        outlineWidth: 2,
+                        style: Cesium.LabelStyle.FILL_AND_OUTLINE,
+                        verticalOrigin: Cesium.VerticalOrigin.BOTTOM,
+                        pixelOffset: new Cesium.Cartesian2(0, -10),
+                      }
+                    });
+                    newEntities.push(destMarker);
+                  }
+                }
+
+                flightEntitiesByHexRef.current.set(hex, newEntities);
+              }
+            } catch (err) {
+              // Skip invalid flights
             }
           });
-          entities.push(trailEntity);
-        }
 
-        // Add predicted route line to destination
-        if (destination && !onGround) {
-          const destCoords = getAirportCoords(destination);
-          if (destCoords) {
-            const routePositions = [
-              lon, lat, alt,
-              destCoords.lon, destCoords.lat, 0
-            ];
-            const routeEntity = viewer.entities.add({
-              id: `route_${hex}`,
-              polyline: {
-                positions: Cesium.Cartesian3.fromDegreesArrayHeights(routePositions),
-                width: 2,
-                material: new Cesium.PolylineGlowMaterialProperty({
-                  glowPower: 0.3,
-                  color: isMilitary ? Cesium.Color.ORANGE.withAlpha(0.7) : Cesium.Color.LIME.withAlpha(0.7),
-                })
-              }
+          if (endIdx < validFlights.length) {
+            requestAnimationFrame(() => processChunk(endIdx));
+          } else {
+            const allEntities: Cesium.Entity[] = [];
+            flightEntitiesByHexRef.current.forEach(ents => allEntities.push(...ents));
+            flightEntitiesRef.current = allEntities;
+            setFlightHistory(newHistory);
+            setFlightCount(validFlights.length);
+
+            allFlightsDataRef.current = validFlights.map((state: unknown[]) => {
+              const hex = state[0] as string;
+              const details = data.aircraftDetails?.[hex] || {};
+              return {
+                hex,
+                callsign: (state[1] as string)?.trim() || '',
+                airline: details.airline || '',
+                flightNumber: details.flightNumber || '',
+                airlineCode: details.airlineCode || '',
+                origin: details.origin || '',
+                destination: details.destination || '',
+                lat: state[6] as number,
+                lon: state[5] as number,
+              };
             });
-            entities.push(routeEntity);
 
-            // Add destination marker
-            const destMarker = viewer.entities.add({
-              id: `dest_${hex}`,
-              position: Cesium.Cartesian3.fromDegrees(destCoords.lon, destCoords.lat, 0),
-              point: {
-                pixelSize: 8,
-                color: Cesium.Color.YELLOW.withAlpha(0.8),
-                outlineColor: Cesium.Color.WHITE,
-                outlineWidth: 2,
-              },
-              label: {
-                text: destination,
-                font: '10px JetBrains Mono',
-                fillColor: Cesium.Color.YELLOW,
-                outlineColor: Cesium.Color.BLACK,
-                outlineWidth: 2,
-                style: Cesium.LabelStyle.FILL_AND_OUTLINE,
-                verticalOrigin: Cesium.VerticalOrigin.BOTTOM,
-                pixelOffset: new Cesium.Cartesian2(0, -10),
+            if (searchQuery.trim()) {
+              const q = searchQuery.toLowerCase();
+              const results = allFlightsDataRef.current.filter(f => {
+                const callsignMatch = f.callsign?.toLowerCase().includes(q);
+                const flightNumMatch = f.flightNumber?.toLowerCase().includes(q);
+                const airlineMatch = f.airline?.toLowerCase().includes(q);
+                const hexMatch = f.hex?.toLowerCase().includes(q);
+                const originMatch = f.origin?.toLowerCase().includes(q);
+                const destMatch = f.destination?.toLowerCase().includes(q);
+                return callsignMatch || flightNumMatch || airlineMatch || hexMatch || originMatch || destMatch;
+              }).slice(0, 20);
+              setSearchResults(results);
+              setShowSearchResults(results.length > 0);
+            }
+
+            const trackedHex = trackedFlightHexRef.current;
+            if (trackedHex && flightEntitiesByHexRef.current.has(trackedHex)) {
+              const trackedEntity = viewer.entities.getById(`flight_${trackedHex}`);
+              if (trackedEntity) {
+                viewer.selectedEntity = trackedEntity;
               }
-            });
-            entities.push(destMarker);
+            }
           }
-        }
-      } catch (err) {
-            // Skip invalid flights
-          }
-        });
+        };
 
-        flightEntitiesRef.current = entities;
-        setFlightHistory(newHistory);
-        setFlightCount(validFlights.length);
+        processChunk(0);
+      } catch (error) {
+        console.error('[FLIGHTS] Error:', error);
       }
-    } catch (error) {
-      console.error('[FLIGHTS] Error:', error);
-    } finally {
-      setFlightsLoading(false);
-    }
-  };
+    };
 
   // Helper functions
   const getCardinalDirection = (heading: number): string => {
@@ -675,13 +802,13 @@ Status: ${onGround ? '🛫 On Ground' : '✈️ Airborne'}
   };
 
 fetchFlights();
-const interval = setInterval(fetchFlights, refreshInterval);
+    const interval = setInterval(fetchFlights, refreshInterval);
 
-return () => {
-clearInterval(interval);
-clearFlights();
-};
-}, [viewer, layers.flights, refreshInterval]);
+    return () => {
+      clearInterval(interval);
+      clearAllFlights();
+    };
+  }, [viewer, layers.flights, refreshInterval, showRoutes]);
 
   // Satellites layer
   useEffect(() => {
@@ -1192,14 +1319,48 @@ return (
 </span>
 </div>
 {lastUpdate && (
-<div className="last-update">
-Updated: {lastUpdate.toLocaleTimeString()}
-</div>
-)}
-<button className="settings-btn" onClick={() => setShowSettings(!showSettings)}>
-⚙️
-</button>
-</div>
+        <div className="last-update">
+          Updated: {lastUpdate.toLocaleTimeString()}
+        </div>
+      )}
+      <div className="search-container">
+        <input
+          type="text"
+          className="flight-search-input"
+          placeholder="🔍 Search flight..."
+          value={searchQuery}
+          onChange={handleSearchChange}
+          onFocus={() => searchResults.length > 0 && setShowSearchResults(true)}
+        />
+        {showSearchResults && searchResults.length > 0 && (
+          <div className="search-results-dropdown">
+            {searchResults.map(flight => (
+              <div
+                key={flight.hex}
+                className="search-result-item"
+                onClick={() => selectSearchResult(flight)}
+              >
+                <span className="result-callsign">{flight.callsign || flight.hex}</span>
+                <span className="result-airline">{flight.airline}</span>
+                <span className="result-route">
+                  {flight.origin || '???'} → {flight.destination || '???'}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+      <button
+        className={`route-toggle-btn ${showRoutes ? 'active' : ''}`}
+        onClick={() => setShowRoutes(!showRoutes)}
+        title={showRoutes ? 'Hide Flight Routes' : 'Show Flight Routes'}
+      >
+        {showRoutes ? '🛫' : '🚫'}
+      </button>
+      <button className="settings-btn" onClick={() => setShowSettings(!showSettings)}>
+        ⚙️
+      </button>
+    </div>
 
 {/* Settings Panel */}
 {showSettings && (
@@ -1492,11 +1653,10 @@ Updated: {lastUpdate.toLocaleTimeString()}
               onClick={() => handleLayerToggle(key)}
             >
               <input type="checkbox" checked={layers[key]} readOnly />
-              <label>
-                {key.toUpperCase().replace('GPSJAMMING', 'GPS JAM').replace('NOFLYZONES', 'NO-FLY ZONES').replace('NEWS', '📰 NEWS').replace('SATELLITEIMAGERY', '🛰️ SATELLITE')}
-                {(key === 'flights' && flightsLoading) && ' ⏳'}
-                {(key === 'satellites' && satellitesLoading) && ' ⏳'}
-              </label>
+<label>
+              {key.toUpperCase().replace('GPSJAMMING', 'GPS JAM').replace('NOFLYZONES', 'NO-FLY ZONES').replace('NEWS', '📰 NEWS').replace('SATELLITEIMAGERY', '🛰️ SATELLITE')}
+              {(key === 'satellites' && satellitesLoading) && ' ⏳'}
+            </label>
             </div>
           ))}
         </div>

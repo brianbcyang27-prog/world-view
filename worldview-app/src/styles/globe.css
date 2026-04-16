@@ -882,9 +882,107 @@ transition: all 0.2s;
 }
 
 .settings-btn:hover {
-background: var(--bg-tertiary);
-color: var(--accent-cyan);
-border-color: var(--accent-cyan);
+  background: var(--bg-tertiary);
+  color: var(--accent-cyan);
+  border-color: var(--accent-cyan);
+}
+
+.route-toggle-btn {
+  background: transparent;
+  border: 1px solid var(--border-color);
+  color: var(--text-secondary);
+  padding: 4px 8px;
+  border-radius: 3px;
+  cursor: pointer;
+  font-size: 14px;
+  transition: all 0.2s;
+}
+
+.route-toggle-btn:hover {
+  background: var(--bg-tertiary);
+  color: var(--accent-cyan);
+  border-color: var(--accent-cyan);
+}
+
+.route-toggle-btn.active {
+  background: rgba(0, 255, 136, 0.15);
+  border-color: var(--accent-lime);
+  color: var(--accent-lime);
+}
+
+.search-container {
+  position: relative;
+  margin: 0 8px;
+}
+
+.flight-search-input {
+  background: rgba(10, 10, 10, 0.8);
+  border: 1px solid var(--border-color);
+  color: var(--text-primary);
+  padding: 6px 12px;
+  border-radius: 4px;
+  font-size: 13px;
+  width: 180px;
+  outline: none;
+  transition: all 0.2s;
+}
+
+.flight-search-input:focus {
+  border-color: var(--accent-cyan);
+  box-shadow: 0 0 8px rgba(0, 255, 255, 0.2);
+}
+
+.flight-search-input::placeholder {
+  color: var(--text-secondary);
+  opacity: 0.7;
+}
+
+.search-results-dropdown {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  background: rgba(15, 15, 15, 0.98);
+  border: 1px solid var(--accent-cyan);
+  border-radius: 4px;
+  max-height: 300px;
+  overflow-y: auto;
+  z-index: 1003;
+  margin-top: 4px;
+}
+
+.search-result-item {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border-color);
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  transition: background 0.2s;
+}
+
+.search-result-item:hover {
+  background: rgba(0, 255, 255, 0.1);
+}
+
+.search-result-item:last-child {
+  border-bottom: none;
+}
+
+.result-callsign {
+  font-weight: 600;
+  color: var(--accent-cyan);
+  font-size: 14px;
+}
+
+.result-airline {
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.result-route {
+  color: var(--accent-lime);
+  font-size: 11px;
 }
 
 /* Settings Panel */
