@@ -2,15 +2,29 @@ import React, { useState, useRef, useEffect, useCallback } from 'react';
 import * as Cesium from 'cesium';
 import { twoline2satrec, propagate, gstime, eciToGeodetic } from 'satellite';
 
-type ShaderMode = 'normal' | 'nvg' | 'flir' | 'crt' | 'anime';
+type ShaderMode = 'normal' | 'dark' | 'light' | 'nvg' | 'flir' | 'crt' | 'anime' | 'godmode';
+type TabType = 'globe' | 'intel' | 'finance' | 'news' | 'tech' | 'hazards' | 'cameras';
 type LayerVisibility = {
-flights: boolean;
-satellites: boolean;
-gpsJamming: boolean;
-maritime: boolean;
-noflyzones: boolean;
-news: boolean;
-satelliteImagery: boolean;
+  flights: boolean;
+  satellites: boolean;
+  gpsJamming: boolean;
+  maritime: boolean;
+  noflyzones: boolean;
+  news: boolean;
+  satelliteImagery: boolean;
+  intelligence: boolean;
+  finance: boolean;
+  weather: boolean;
+  infrastructure: boolean;
+  cables: boolean;
+  outages: boolean;
+  datacenters: boolean;
+  cloudRegions: boolean;
+  hackerEvents: boolean;
+  naturalDisasters: boolean;
+  techHQs: boolean;
+  startupHubs: boolean;
+  powerPlants: boolean;
 };
 
 interface SatelliteData {
@@ -72,17 +86,57 @@ gpsJamming: false,
 maritime: false,
 noflyzones: false,
 news: false,
-satelliteImagery: false
+satelliteImagery: false,
+intelligence: false,
+finance: false,
+weather: false,
+infrastructure: false,
+cables: false,
+outages: false,
+datacenters: false,
+cloudRegions: false,
+hackerEvents: false,
+naturalDisasters: false,
+techHQs: false,
+startupHubs: false,
+  powerPlants: false
 });
 
-  const [shaderMode, setShaderMode] = useState<ShaderMode>('normal');
-  const [flightCount, setFlightCount] = useState(0);
-  const [satelliteCount, setSatelliteCount] = useState(0);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [satellitesLoading, setSatellitesLoading] = useState(false);
-  const [gpsJammingCount, setGpsJammingCount] = useState(0);
-  const [maritimeCount, setMaritimeCount] = useState(0);
+const [activeTab, setActiveTab] = useState<TabType>('globe');
+const [countrySummary, setCountrySummary] = useState<any>(null);
+
+const fetchCountryInfo = async (countryCode: string) => {
+try {
+const response = await fetch(`${API_BASE}/api/country/${countryCode}`);
+const data = await response.json();
+setCountrySummary(data);
+} catch (error) {
+console.error('[COUNTRY] Error:', error);
+}
+};
+
+const [shaderMode, setShaderMode] = useState<ShaderMode>('normal');
+const [flightCount, setFlightCount] = useState(0);
+
+useEffect(() => {
+const tabLayers: Record<TabType, Partial<LayerVisibility>> = {
+'globe': { flights: true, satellites: true, gpsJamming: false, maritime: false, noflyzones: false, news: false, satelliteImagery: false, intelligence: false, finance: false, weather: false, infrastructure: false, cables: false, outages: false, datacenters: false, cloudRegions: false, hackerEvents: false, naturalDisasters: false, techHQs: false, startupHubs: false },
+'intel': { flights: false, satellites: false, gpsJamming: false, maritime: false, noflyzones: false, news: true, satelliteImagery: false, intelligence: true, finance: false, weather: false, infrastructure: false, cables: false, outages: false, datacenters: false, cloudRegions: false, hackerEvents: false, naturalDisasters: false, techHQs: false, startupHubs: false },
+'finance': { flights: false, satellites: false, gpsJamming: false, maritime: false, noflyzones: false, news: false, satelliteImagery: false, intelligence: false, finance: true, weather: false, infrastructure: false, cables: false, outages: false, datacenters: false, cloudRegions: false, hackerEvents: false, naturalDisasters: false, techHQs: false, startupHubs: false },
+'news': { flights: false, satellites: false, gpsJamming: false, maritime: false, noflyzones: false, news: true, satelliteImagery: false, intelligence: true, finance: false, weather: false, infrastructure: false, cables: false, outages: false, datacenters: false, cloudRegions: false, hackerEvents: false, naturalDisasters: false, techHQs: false, startupHubs: false },
+'tech': { flights: false, satellites: false, gpsJamming: false, maritime: false, noflyzones: false, news: false, satelliteImagery: false, intelligence: false, finance: false, weather: false, infrastructure: true, cables: true, outages: true, datacenters: true, cloudRegions: true, hackerEvents: false, naturalDisasters: false, techHQs: true, startupHubs: true, powerPlants: true },
+'hazards': { flights: false, satellites: false, gpsJamming: true, maritime: false, noflyzones: false, news: false, satelliteImagery: false, intelligence: false, finance: false, weather: true, infrastructure: false, cables: false, outages: false, datacenters: false, cloudRegions: false, hackerEvents: true, naturalDisasters: true, techHQs: false, startupHubs: false },
+'cameras': { flights: true, satellites: false, gpsJamming: false, maritime: false, noflyzones: false, news: true, satelliteImagery: true, intelligence: true, finance: false, weather: true, infrastructure: false, cables: false, outages: false, datacenters: false, cloudRegions: false, hackerEvents: false, naturalDisasters: false, techHQs: false, startupHubs: false },
+};
+setLayers(prev => ({ ...prev, ...tabLayers[activeTab] }));
+}, [activeTab]);
+
+const [satelliteCount, setSatelliteCount] = useState(0);
+const [loading, setLoading] = useState(true);
+const [error, setError] = useState<string | null>(null);
+const [satellitesLoading, setSatellitesLoading] = useState(false);
+const [gpsJammingCount, setGpsJammingCount] = useState(0);
+const [maritimeCount, setMaritimeCount] = useState(0);
 const [noFlyZoneCount, setNoFlyZoneCount] = useState(0);
 const [newsCount, setNewsCount] = useState(0);
 const [trackedSatellite, setTrackedSatellite] = useState<string | null>(null);
@@ -192,11 +246,20 @@ cesiumViewer.selectedEntityChanged.addEventListener((selectedEntity: Cesium.Enti
       
 const entityId = selectedEntity.id as string || '';
 
-// Check if it's a flight
-    if (entityId.startsWith('flight_')) {
-      const hex = entityId.replace('flight_', '');
-      trackedFlightHexRef.current = hex;
-      const props = selectedEntity.properties;
+// Check if it's a country (intel layer)
+  if (entityId.startsWith('intel_')) {
+    const countryCode = entityId.replace('intel_', '');
+    fetchCountryInfo(countryCode);
+    setSelectedFlight(null);
+    setTrackedSatellite(null);
+    clearOrbitPathRef.current?.();
+    return;
+  }
+  // Check if it's a flight
+  if (entityId.startsWith('flight_')) {
+    const hex = entityId.replace('flight_', '');
+    trackedFlightHexRef.current = hex;
+    const props = selectedEntity.properties;
 
             if (props) {
               // Helper to safely get property value from Cesium Entity properties
@@ -428,6 +491,12 @@ const details = detailsJson ? JSON.parse(detailsJson) : {};
               if (mainEntity) {
                 mainEntity.position = new Cesium.ConstantPositionProperty(Cesium.Cartesian3.fromDegrees(lon, lat, alt));
 
+                const mainBillboard = mainEntity.billboard as any;
+                if (mainBillboard) {
+                  mainBillboard.rotation = Cesium.Math.toRadians(-(track || 0) - 90);
+                  mainBillboard.color = onGround ? Cesium.Color.GRAY : (isMilitary ? Cesium.Color.ORANGE : (details.emergency !== 'none' ? Cesium.Color.RED : Cesium.Color.CYAN));
+                }
+
                 const historyPoints = newHistory.get(hex);
                 const trailEntity = existingEntities.find(e => e.id === `trail_${hex}`);
                 if (trailEntity && historyPoints && historyPoints.length > 2 && showRoutes) {
@@ -456,12 +525,17 @@ const details = detailsJson ? JSON.parse(detailsJson) : {};
                   id: `flight_${hex}`,
                   name: flightCallsign || hex,
                   position: Cesium.Cartesian3.fromDegrees(lon, lat, alt),
+                  billboard: {
+                    image: 'data:image/svg+xml;base64,' + btoa(`<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="${onGround ? '#888888' : (isMilitary ? 'orange' : details.emergency !== 'none' ? 'red' : 'cyan')}"><path d="M21 16v-2l-8-5V3.5c0-.83-.67-1.5-1.5-1.5S10 2.67 10 3.5V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5l8 2.5z"/></svg>`),
+                    width: 36,
+                    height: 36,
+                    rotation: Cesium.Math.toRadians(-(track || 0) - 90),
+                    scaleByDistance: new Cesium.NearFarScalar(1e5, 0.4, 2e6, 1.0),
+                    color: onGround ? Cesium.Color.GRAY : (isMilitary ? Cesium.Color.ORANGE : (details.emergency !== 'none' ? Cesium.Color.RED : Cesium.Color.CYAN)),
+                  },
                   point: {
-                    pixelSize: isMilitary ? 10 : 7,
-                    color: isMilitary ? Cesium.Color.ORANGE : (details.emergency !== 'none' ? Cesium.Color.RED : Cesium.Color.CYAN),
-                    outlineColor: isMilitary ? Cesium.Color.DARKORANGE : Cesium.Color.BLACK,
-                    outlineWidth: 2,
-                    scaleByDistance: new Cesium.NearFarScalar(1.5e2, 3, 1.5e7, 0.5),
+                    pixelSize: 0,
+                    color: Cesium.Color.TRANSPARENT,
                   },
                   properties: {
                     hex,
@@ -1162,6 +1236,637 @@ imageryLayers.remove(imageryLayers.get(imageryLayers.length - 1));
 }
 }, [viewer, layers.satelliteImagery]);
 
+useEffect(() => {
+if (!viewer) return;
+
+const clearIntelligence = () => {
+viewer.entities.values.filter((e: any) => e.id?.startsWith('intel_')).forEach((e: any) => viewer.entities.remove(e));
+};
+
+if (!layers.intelligence) {
+clearIntelligence();
+return;
+}
+
+const fetchIntelligence = async () => {
+try {
+const response = await fetch(`${API_BASE}/api/intelligence/index`);
+const data = await response.json();
+
+const countryCoords: Record<string, [number, number]> = {
+'US': [-98, 38], 'CN': [105, 35], 'RU': [100, 60], 'IR': [53, 32],
+'KP': [127, 40], 'SY': [38, 35], 'YE': [45, 15], 'UA': [30, 50],
+'AF': [66, 33], 'IQ': [44, 33], 'VE': [-66, 7], 'ZW': [29, -19],
+'SD': [30, 15], 'LY': [17, 27], 'SO': [46, 5], 'MM': [96, 21],
+'BY': [28, 53], 'VN': [108, 16], 'SA': [45, 25], 'IL': [35, 31],
+'PK': [70, 30], 'IN': [78, 22], 'BR': [-52, -10], 'ZA': [25, -29],
+'NG': [8, 10], 'EG': [30, 27], 'TR': [35, 39], 'JP': [138, 36],
+'DE': [10, 51], 'GB': [-2, 52], 'FR': [2, 46], 'KR': [128, 36]
+};
+
+if (data.data) {
+Object.entries(data.data).forEach(([country, info]: [string, any]) => {
+const coords = countryCoords[country] || [0, 20];
+const riskColor = info.score > 70 ? Cesium.Color.RED.withAlpha(0.4) :
+info.score > 40 ? Cesium.Color.ORANGE.withAlpha(0.3) :
+Cesium.Color.LIME.withAlpha(0.2);
+
+viewer.entities.add({
+id: `intel_${country}`,
+position: Cesium.Cartesian3.fromDegrees(coords[0], coords[1], 0),
+ellipse: {
+semiMajorAxis: 800000,
+semiMinorAxis: 600000,
+material: riskColor,
+outline: true,
+outlineColor: info.score > 70 ? Cesium.Color.RED : info.score > 40 ? Cesium.Color.ORANGE : Cesium.Color.LIME,
+outlineWidth: 2
+},
+label: {
+text: `${country}: ${info.score}`,
+font: '12px monospace',
+fillColor: Cesium.Color.WHITE,
+outlineColor: Cesium.Color.BLACK,
+outlineWidth: 2,
+verticalOrigin: Cesium.VerticalOrigin.CENTER,
+pixelOffset: new Cesium.Cartesian2(0, 0)
+},
+description: `**Country:** ${country}\\n**Risk Score:** ${info.score}/100\\n**Category:** ${info.category}\\n**Trend:** ${info.trend}\\n**Factors:** ${info.factors.join(', ')}`
+});
+});
+}
+} catch (error) {
+console.error('[INTELLIGENCE] Error:', error);
+}
+};
+
+fetchIntelligence();
+}, [viewer, layers.intelligence]);
+
+useEffect(() => {
+if (!viewer) return;
+
+const clearFinance = () => {
+viewer.entities.values.filter((e: any) => e.id?.startsWith('finance_')).forEach((e: any) => viewer.entities.remove(e));
+};
+
+if (!layers.finance) {
+clearFinance();
+return;
+}
+
+const fetchFinance = async () => {
+try {
+const response = await fetch(`${API_BASE}/api/finance/radar`);
+const data = await response.json();
+
+if (data.data) {
+const financeLocations: Record<string, [number, number]> = {
+'SPX': [-74, 40], 'NDX': [-74, 40], 'DJI': [-74, 40],
+'FTSE': [-0.1, 51.5], 'DAX': [8.6, 50.1], 'N225': [139.7, 35.7],
+'HSI': [114.1, 22.3], 'SSEC': [121.5, 31.2]
+};
+
+data.data.indices?.forEach((idx: any) => {
+const coords = financeLocations[idx.symbol] || [0, 0];
+const color = idx.change >= 0 ? Cesium.Color.LIME : Cesium.Color.RED;
+
+viewer.entities.add({
+id: `finance_idx_${idx.symbol}`,
+position: Cesium.Cartesian3.fromDegrees(coords[0], coords[1], 0),
+point: {
+pixelSize: 12,
+color: color,
+outlineColor: Cesium.Color.WHITE,
+outlineWidth: 1
+},
+label: {
+text: `${idx.symbol}: ${idx.price.toFixed(0)} (${idx.change >= 0 ? '+' : ''}${idx.change.toFixed(2)}%)`,
+font: '11px monospace',
+fillColor: Cesium.Color.WHITE,
+outlineColor: Cesium.Color.BLACK,
+outlineWidth: 2,
+verticalOrigin: Cesium.VerticalOrigin.TOP,
+pixelOffset: new Cesium.Cartesian2(0, 10)
+}
+});
+});
+
+data.data.crypto?.forEach((crypto: any) => {
+const cryptoLat = crypto.symbol === 'BTC' ? 40.7 : crypto.symbol === 'ETH' ? 37.8 : 35.7;
+const cryptoLon = crypto.symbol === 'BTC' ? -74.0 : crypto.symbol === 'ETH' ? -122.4 : -122.4;
+
+viewer.entities.add({
+id: `finance_crypto_${crypto.symbol}`,
+position: Cesium.Cartesian3.fromDegrees(cryptoLon, cryptoLat, 0),
+point: {
+pixelSize: 10,
+color: crypto.change >= 0 ? Cesium.Color.CYAN : Cesium.Color.RED
+},
+label: {
+text: `${crypto.symbol}: $${crypto.price.toLocaleString()} (${crypto.change >= 0 ? '+' : ''}${crypto.change.toFixed(2)}%)`,
+font: '10px monospace',
+fillColor: Cesium.Color.CYAN,
+outlineColor: Cesium.Color.BLACK,
+outlineWidth: 2,
+verticalOrigin: Cesium.VerticalOrigin.TOP
+}
+});
+});
+}
+} catch (error) {
+console.error('[FINANCE] Error:', error);
+}
+};
+
+fetchFinance();
+}, [viewer, layers.finance]);
+
+useEffect(() => {
+if (!viewer) return;
+
+const clearWeather = () => {
+viewer.entities.values.filter((e: any) => e.id?.startsWith('weather_')).forEach((e: any) => viewer.entities.remove(e));
+};
+
+if (!layers.weather) {
+clearWeather();
+return;
+}
+
+const fetchWeather = async () => {
+try {
+const response = await fetch(`${API_BASE}/api/weather`);
+const data = await response.json();
+
+if (data.data) {
+data.data.storms?.forEach((storm: any) => {
+const catColor = storm.category?.includes('typhoon') || storm.category?.includes('hurricane') ? Cesium.Color.RED :
+storm.category?.includes('cyclon') ? Cesium.Color.ORANGE : Cesium.Color.YELLOW;
+
+viewer.entities.add({
+id: `weather_storm_${storm.id}`,
+position: Cesium.Cartesian3.fromDegrees(storm.lon, storm.lat, 0),
+point: {
+pixelSize: 20,
+color: catColor.withAlpha(0.8),
+outlineColor: Cesium.Color.WHITE,
+outlineWidth: 2
+},
+label: {
+text: `⚠️ ${storm.name}\nWind: ${storm.wind} km/h`,
+font: '11px monospace',
+fillColor: Cesium.Color.WHITE,
+outlineColor: Cesium.Color.BLACK,
+outlineWidth: 2,
+verticalOrigin: Cesium.VerticalOrigin.BOTTOM
+},
+description: `**Storm:** ${storm.name}\n**Category:** ${storm.category}\n**Wind:** ${storm.wind} km/h\n**Pressure:** ${storm.pressure} hPa\n**Movement:** ${storm.movement}`
+});
+});
+
+data.data.temperature?.forEach((temp: any) => {
+const tempColor = temp.temp > 30 ? Cesium.Color.RED : temp.temp > 20 ? Cesium.Color.YELLOW : temp.temp > 10 ? Cesium.Color.LIME : Cesium.Color.CYAN;
+
+viewer.entities.add({
+id: `weather_temp_${temp.lat}_${temp.lon}`,
+position: Cesium.Cartesian3.fromDegrees(temp.lon, temp.lat, 0),
+point: {
+pixelSize: 8,
+color: tempColor.withAlpha(0.6)
+}
+});
+});
+}
+} catch (error) {
+console.error('[WEATHER] Error:', error);
+}
+};
+
+fetchWeather();
+}, [viewer, layers.weather]);
+
+useEffect(() => {
+if (!viewer) return;
+
+const clearInfrastructure = () => {
+viewer.entities.values.filter((e: any) => e.id?.startsWith('infra_')).forEach((e: any) => viewer.entities.remove(e));
+};
+
+if (!layers.infrastructure) {
+clearInfrastructure();
+return;
+}
+
+const fetchInfrastructure = async () => {
+try {
+const response = await fetch(`${API_BASE}/api/infrastructure`);
+const data = await response.json();
+
+if (data.data) {
+data.data.powerPlants?.forEach((plant: any) => {
+const typeColor = plant.type === 'nuclear' ? Cesium.Color.YELLOW :
+plant.type === 'coal' ? Cesium.Color.GRAY :
+plant.type === 'natural_gas' ? Cesium.Color.ORANGE :
+Cesium.Color.LIME;
+
+viewer.entities.add({
+id: `infra_power_${plant.name.replace(/\s/g, '_')}`,
+position: Cesium.Cartesian3.fromDegrees(plant.lon, plant.lat, 0),
+point: {
+pixelSize: 10,
+color: typeColor,
+outlineColor: Cesium.Color.WHITE,
+outlineWidth: 1
+},
+label: {
+text: `⚡ ${plant.name.substring(0, 15)}`,
+font: '9px monospace',
+fillColor: Cesium.Color.WHITE,
+outlineColor: Cesium.Color.BLACK,
+outlineWidth: 1,
+verticalOrigin: Cesium.VerticalOrigin.TOP
+},
+description: `**Plant:** ${plant.name}\n**Type:** ${plant.type}\n**Capacity:** ${plant.capacity} MW\n**Status:** ${plant.status}`
+});
+});
+
+data.data.datacenters?.forEach((dc: any) => {
+  if (!layers.datacenters) return;
+  viewer.entities.add({
+    id: `infra_dc_${dc.name.replace(/\s/g, '_')}`,
+    position: Cesium.Cartesian3.fromDegrees(dc.lon, dc.lat, 0),
+    point: {
+      pixelSize: 8,
+      color: Cesium.Color.CYAN,
+      outlineColor: Cesium.Color.WHITE,
+      outlineWidth: 1
+    },
+    label: {
+      text: '💾 DC',
+      font: '9px monospace',
+      fillColor: Cesium.Color.CYAN,
+      outlineColor: Cesium.Color.BLACK,
+      outlineWidth: 1,
+      verticalOrigin: Cesium.VerticalOrigin.TOP
+    }
+  });
+});
+
+if (layers.cables && data.data.submarineCables) {
+  data.data.submarineCables.forEach((cable: any) => {
+    if (cable.path && cable.path.length >= 2) {
+      const positions = cable.path.map((p: number[]) => Cesium.Cartesian3.fromDegrees(p[1], p[0], 0));
+      viewer.entities.add({
+        id: `infra_cable_${cable.name.replace(/\s/g, '_')}`,
+        polyline: {
+          positions,
+          width: 2,
+          material: new Cesium.PolylineGlowMaterialProperty({
+            glowPower: 0.2,
+            color: Cesium.Color.CYAN.withAlpha(0.8)
+          })
+        },
+        description: `**Cable:** ${cable.name}\n**Type:** Submarine Fiber Optic`
+      });
+    }
+  });
+}
+
+if (layers.outages && data.data.internetOutages) {
+  data.data.internetOutages.forEach((outage: any) => {
+    const severityColor = outage.severity === 'major' ? Cesium.Color.RED : Cesium.Color.ORANGE;
+    viewer.entities.add({
+      id: `infra_outage_${outage.region.replace(/\s/g, '_')}`,
+      position: Cesium.Cartesian3.fromDegrees(outage.lon, outage.lat, 0),
+      point: {
+        pixelSize: 12,
+        color: severityColor,
+        outlineColor: Cesium.Color.WHITE,
+        outlineWidth: 2
+      },
+      label: {
+        text: `⚠️ ${outage.region.split(',')[0]}`,
+        font: '10px monospace',
+        fillColor: Cesium.Color.WHITE,
+        outlineColor: Cesium.Color.BLACK,
+        outlineWidth: 2,
+        verticalOrigin: Cesium.VerticalOrigin.TOP,
+        pixelOffset: new Cesium.Cartesian2(0, -15)
+      },
+      description: `**Region:** ${outage.region}\n**Severity:** ${outage.severity}\n**Duration:** ${outage.duration}`
+    });
+  });
+}
+
+if (layers.cloudRegions) {
+  const cloudRegions = [
+    { name: 'AWS US-East', lat: 38.8, lon: -77.0, provider: 'AWS' },
+    { name: 'AWS EU-West', lat: 51.5, lon: -0.1, provider: 'AWS' },
+    { name: 'Azure East US', lat: 36.0, lon: -78.9, provider: 'Azure' },
+    { name: 'Azure West Europe', lat: 52.3, lon: 4.9, provider: 'Azure' },
+    { name: 'GCP US-Central', lat: 41.9, lon: -87.6, provider: 'GCP' },
+    { name: 'GCP EU-West', lat: 53.3, lon: -6.3, provider: 'GCP' }
+  ];
+  cloudRegions.forEach((region: any) => {
+    const providerColor = region.provider === 'AWS' ? Cesium.Color.ORANGE :
+                          region.provider === 'Azure' ? Cesium.Color.CYAN : Cesium.Color.LIME;
+    viewer.entities.add({
+      id: `cloud_${region.name.replace(/\s/g, '_')}`,
+      position: Cesium.Cartesian3.fromDegrees(region.lon, region.lat, 0),
+      point: {
+        pixelSize: 10,
+        color: providerColor,
+        outlineColor: Cesium.Color.WHITE,
+        outlineWidth: 1
+      },
+      label: {
+        text: `☁️ ${region.name}`,
+        font: '9px monospace',
+        fillColor: providerColor,
+        outlineColor: Cesium.Color.BLACK,
+        outlineWidth: 1,
+        verticalOrigin: Cesium.VerticalOrigin.TOP
+      }
+    });
+  });
+}
+
+if (layers.techHQs) {
+  const techHQs = [
+    { name: 'Google HQ', lat: 37.4220, lon: -122.0841 },
+    { name: 'Meta HQ', lat: 37.4848, lon: -122.1483 },
+    { name: 'Apple HQ', lat: 37.3318, lon: -122.0312 },
+    { name: 'Microsoft HQ', lat: 47.6395, lon: -122.1285 },
+    { name: 'Amazon HQ', lat: 47.6223, lon: -122.3378 },
+    { name: 'OpenAI', lat: 37.4075, lon: -122.1467 }
+  ];
+  techHQs.forEach((hq: any) => {
+    viewer.entities.add({
+      id: `techhq_${hq.name.replace(/\s/g, '_')}`,
+      position: Cesium.Cartesian3.fromDegrees(hq.lon, hq.lat, 0),
+      point: {
+        pixelSize: 10,
+        color: Cesium.Color.PURPLE,
+        outlineColor: Cesium.Color.WHITE,
+        outlineWidth: 1
+      },
+      label: {
+        text: `🏢 ${hq.name}`,
+        font: '9px monospace',
+        fillColor: Cesium.Color.PURPLE,
+        outlineColor: Cesium.Color.BLACK,
+        outlineWidth: 1,
+        verticalOrigin: Cesium.VerticalOrigin.TOP
+      }
+    });
+  });
+}
+
+if (layers.startupHubs) {
+  const startupHubs = [
+    { name: 'Silicon Valley', lat: 37.3875, lon: -122.0575 },
+    { name: 'NYC', lat: 40.7128, lon: -74.0060 },
+    { name: 'London', lat: 51.5074, lon: -0.1278 },
+    { name: 'Berlin', lat: 52.5200, lon: 13.4050 },
+    { name: 'Tel Aviv', lat: 32.0853, lon: 34.7818 },
+    { name: 'Singapore', lat: 1.3521, lon: 103.8198 }
+  ];
+  startupHubs.forEach((hub: any) => {
+    viewer.entities.add({
+      id: `startup_${hub.name.replace(/\s/g, '_')}`,
+      position: Cesium.Cartesian3.fromDegrees(hub.lon, hub.lat, 0),
+      point: {
+        pixelSize: 8,
+        color: Cesium.Color.LIME,
+        outlineColor: Cesium.Color.WHITE,
+        outlineWidth: 1
+      },
+      label: {
+        text: `🚀 ${hub.name}`,
+        font: '9px monospace',
+        fillColor: Cesium.Color.LIME,
+        outlineColor: Cesium.Color.BLACK,
+        outlineWidth: 1,
+        verticalOrigin: Cesium.VerticalOrigin.TOP
+      }
+    });
+  });
+}
+}
+} catch (error) {
+console.error('[INFRASTRUCTURE] Error:', error);
+}
+};
+
+fetchInfrastructure();
+}, [viewer, layers.infrastructure, layers.cables, layers.outages, layers.datacenters, layers.cloudRegions, layers.techHQs, layers.startupHubs, layers.hackerEvents]);
+
+useEffect(() => {
+  if (!viewer) return;
+
+  const clearHackerEvents = () => {
+    viewer.entities.values.filter((e: any) => e.id?.startsWith('hacker_')).forEach((e: any) => viewer.entities.remove(e));
+  };
+
+  if (!layers.hackerEvents) {
+    clearHackerEvents();
+    return;
+  }
+
+  const fetchHackerEvents = async () => {
+    try {
+      const response = await fetch(`${API_BASE}/api/tech/events`);
+      const data = await response.json();
+
+      if (data.events) {
+        const securityEvents = data.events.filter((e: any) => e.type === 'security');
+        const eventLocations: Record<string, { lat: number; lon: number }> = {
+          'Las Vegas, USA': { lat: 36.1699, lon: -115.1398 },
+          'San Francisco, USA': { lat: 37.7749, lon: -122.4194 }
+        };
+
+        securityEvents.forEach((event: any) => {
+          const coords = eventLocations[event.location] || { lat: 37.7749, lon: -122.4194 };
+          viewer.entities.add({
+            id: `hacker_${event.name.replace(/\s/g, '_')}`,
+            position: Cesium.Cartesian3.fromDegrees(coords.lon, coords.lat, 0),
+            point: {
+              pixelSize: 12,
+              color: Cesium.Color.RED,
+              outlineColor: Cesium.Color.BLACK,
+              outlineWidth: 2
+            },
+            label: {
+              text: `💀 ${event.name}`,
+              font: '10px monospace',
+              fillColor: Cesium.Color.RED,
+              outlineColor: Cesium.Color.BLACK,
+              outlineWidth: 2,
+              verticalOrigin: Cesium.VerticalOrigin.TOP,
+              pixelOffset: new Cesium.Cartesian2(0, -15)
+            },
+            description: `**Event:** ${event.name}\n**Location:** ${event.location}\n**Date:** ${event.date}\n**Attendees:** ${event.attendees?.toLocaleString()}`
+          });
+        });
+      }
+    } catch (error) {
+      console.error('[HACKER EVENTS] Error:', error);
+    }
+  };
+
+  fetchHackerEvents();
+}, [viewer, layers.hackerEvents]);
+
+useEffect(() => {
+  if (!viewer) return;
+
+  const clearPowerPlants = () => {
+    viewer.entities.values.filter((e: any) => e.id?.startsWith('powerplant_')).forEach((e: any) => viewer.entities.remove(e));
+  };
+
+  if (!layers.powerPlants) {
+    clearPowerPlants();
+    return;
+  }
+
+  const fetchPowerPlants = async () => {
+    try {
+      const response = await fetch(`${API_BASE}/api/power-plants`);
+      const data = await response.json();
+
+      if (data.plants) {
+        const fuelColors: Record<string, Cesium.Color> = {
+          coal: Cesium.Color.DARKGRAY,
+          gas: Cesium.Color.ORANGE,
+          nuclear: Cesium.Color.YELLOW,
+          hydro: Cesium.Color.CYAN,
+          oil: Cesium.Color.RED,
+          wind: Cesium.Color.LIME,
+          solar: Cesium.Color.GOLD,
+          biomass: Cesium.Color.LIGHTGREEN
+        };
+
+        data.plants.forEach((plant: any) => {
+          const color = fuelColors[plant.fuel] || Cesium.Color.WHITE;
+          const size = Math.min(20, Math.max(6, Math.log10(plant.capacity) * 4));
+
+          viewer.entities.add({
+            id: `powerplant_${plant.name.replace(/\s/g, '_')}`,
+            position: Cesium.Cartesian3.fromDegrees(plant.lon, plant.lat, 0),
+            point: {
+              pixelSize: size,
+              color: color,
+              outlineColor: Cesium.Color.WHITE,
+              outlineWidth: 1
+            },
+            label: {
+              text: `⚡ ${plant.name.substring(0, 18)}`,
+              font: '9px monospace',
+              fillColor: color,
+              outlineColor: Cesium.Color.BLACK,
+              outlineWidth: 1,
+              verticalOrigin: Cesium.VerticalOrigin.TOP,
+              pixelOffset: new Cesium.Cartesian2(0, -size - 2)
+            },
+            description: `**${plant.name}**\n**Country:** ${plant.country}\n**Capacity:** ${plant.capacity} MW\n**Fuel:** ${plant.fuel}\n**Status:** ${plant.status}`
+          });
+        });
+      }
+    } catch (error) {
+      console.error('[POWER PLANTS] Error:', error);
+    }
+  };
+
+  fetchPowerPlants();
+}, [viewer, layers.powerPlants]);
+
+useEffect(() => {
+  if (!viewer) return;
+
+  const clearDisasters = () => {
+    viewer.entities.values.filter((e: any) => e.id?.startsWith('disaster_')).forEach((e: any) => viewer.entities.remove(e));
+  };
+
+  if (!layers.naturalDisasters) {
+    clearDisasters();
+    return;
+  }
+
+  const fetchDisasters = async () => {
+    try {
+      const response = await fetch(`${API_BASE}/api/weather`);
+      const data = await response.json();
+
+      if (data.data?.alerts) {
+        data.data.alerts.forEach((alert: any) => {
+          const coords: Record<string, { lat: number; lon: number }> = {
+            'South China Sea': { lat: 15.0, lon: 118.0 },
+            'Caribbean': { lat: 18.0, lon: -70.0 },
+            'Central Europe': { lat: 50.0, lon: 10.0 }
+          };
+          const c = coords[alert.region] || { lat: 20.0, lon: 0.0 };
+          const severityColor = alert.severity === 'red' ? Cesium.Color.RED :
+                                alert.severity === 'orange' ? Cesium.Color.ORANGE : Cesium.Color.YELLOW;
+
+          viewer.entities.add({
+            id: `disaster_${alert.id}`,
+            position: Cesium.Cartesian3.fromDegrees(c.lon, c.lat, 0),
+            point: {
+              pixelSize: 15,
+              color: severityColor,
+              outlineColor: Cesium.Color.WHITE,
+              outlineWidth: 2
+            },
+            label: {
+              text: `🌋 ${alert.region}`,
+              font: '11px monospace',
+              fillColor: severityColor,
+              outlineColor: Cesium.Color.BLACK,
+              outlineWidth: 2,
+              verticalOrigin: Cesium.VerticalOrigin.TOP,
+              pixelOffset: new Cesium.Cartesian2(0, -18)
+            },
+            description: `**Alert:** ${alert.type}\n**Region:** ${alert.region}\n**Severity:** ${alert.severity}\n**Message:** ${alert.message}`
+          });
+        });
+      }
+
+      if (data.data?.storms) {
+        data.data.storms.forEach((storm: any) => {
+          const stormColor = storm.wind > 150 ? Cesium.Color.RED :
+                            storm.wind > 120 ? Cesium.Color.ORANGE : Cesium.Color.YELLOW;
+
+          viewer.entities.add({
+            id: `disaster_storm_${storm.id}`,
+            position: Cesium.Cartesian3.fromDegrees(storm.lon, storm.lat, 0),
+            point: {
+              pixelSize: 18,
+              color: stormColor.withAlpha(0.8),
+              outlineColor: Cesium.Color.WHITE,
+              outlineWidth: 2
+            },
+            label: {
+              text: `⛈️ ${storm.name.trim()}`,
+              font: '10px monospace',
+              fillColor: Cesium.Color.WHITE,
+              outlineColor: Cesium.Color.BLACK,
+              outlineWidth: 2,
+              verticalOrigin: Cesium.VerticalOrigin.TOP,
+              pixelOffset: new Cesium.Cartesian2(0, -20)
+            },
+            description: `**Storm:** ${storm.name}\n**Wind:** ${storm.wind} km/h\n**Pressure:** ${storm.pressure} hPa\n**Movement:** ${storm.movement}`
+          });
+        });
+      }
+    } catch (error) {
+      console.error('[NATURAL DISASTERS] Error:', error);
+    }
+  };
+
+  fetchDisasters();
+}, [viewer, layers.naturalDisasters]);
+
 // Shader mode effects
   useEffect(() => {
     if (!viewer) return;
@@ -1171,6 +1876,16 @@ imageryLayers.remove(imageryLayers.get(imageryLayers.length - 1));
 
     if (imageryLayers.length > 0) {
       switch (shaderMode) {
+        case 'dark':
+          imageryLayers.get(0).alpha = 0.85;
+          scene.globe.baseColor = Cesium.Color.fromCssColorString('#0a0a0a');
+          scene.backgroundColor = Cesium.Color.fromCssColorString('#000000');
+          break;
+        case 'light':
+          imageryLayers.get(0).alpha = 0.4;
+          scene.globe.baseColor = Cesium.Color.fromCssColorString('#e8e8e8');
+          scene.backgroundColor = Cesium.Color.fromCssColorString('#f0f0f0');
+          break;
         case 'nvg':
           imageryLayers.get(0).alpha = 0.6;
           scene.globe.baseColor = Cesium.Color.fromCssColorString('#003300');
@@ -1179,13 +1894,18 @@ imageryLayers.remove(imageryLayers.get(imageryLayers.length - 1));
           imageryLayers.get(0).alpha = 0.5;
           scene.globe.baseColor = Cesium.Color.fromCssColorString('#001a00');
           break;
-        case 'crt':
-          imageryLayers.get(0).alpha = 0.75;
-          scene.globe.baseColor = Cesium.Color.fromCssColorString('#001100');
-          break;
-        default:
+case 'crt':
+  imageryLayers.get(0).alpha = 0.75;
+  scene.globe.baseColor = Cesium.Color.fromCssColorString('#001100');
+  break;
+case 'godmode':
+  imageryLayers.get(0).alpha = 0.4;
+  scene.globe.baseColor = Cesium.Color.fromCssColorString('#000800');
+  break;
+default:
           imageryLayers.get(0).alpha = 1.0;
           scene.globe.baseColor = Cesium.Color.WHITE;
+          scene.backgroundColor = Cesium.Color.BLACK;
       }
     }
   }, [viewer, shaderMode]);
@@ -1308,6 +2028,18 @@ imageryLayers.remove(imageryLayers.get(imageryLayers.length - 1));
 
 return (
 <div className="worldview-container">
+<div className="main-tabs">
+{(['globe', 'intel', 'finance', 'news', 'tech', 'hazards', 'cameras'] as TabType[]).map(tab => (
+<button
+key={tab}
+className={`tab-button ${activeTab === tab ? 'active' : ''}`}
+onClick={() => setActiveTab(tab)}
+>
+{tab === 'globe' ? '🌍 Globe' : tab === 'intel' ? '🗺️ Intel' : tab === 'finance' ? '📈 Finance' : tab === 'news' ? '📰 News' : tab === 'tech' ? '💻 Tech' : tab === 'hazards' ? '⚠️ Hazards' : '📹 Cameras'}
+</button>
+))}
+</div>
+
 <div ref={containerRef} className="cesium-viewer" />
 
 {/* Network Status Indicator */}
@@ -1399,14 +2131,47 @@ return (
         </div>
       )}
 
-      {shaderMode === 'crt' && !loading && (
-        <>
-          <div className="crt-effect" />
-          <div className="scanline" />
-        </>
-      )}
+{shaderMode === 'crt' && !loading && (
+  <>
+  <div className="crt-effect" />
+  <div className="scanline" />
+  </>
+)}
 
-<div className="crosshair" />
+{(shaderMode === 'nvg' || shaderMode === 'flir' || shaderMode === 'crt' || shaderMode === 'godmode') && !loading && (
+  <>
+  <div className="nvg-overlay" />
+  <div className="flir-overlay" />
+  <div className={shaderMode === 'godmode' ? 'military-reticle godmode-reticle' : 'military-reticle'}>
+    <div className="reticle-ring" />
+    <div className="reticle-ring-inner" />
+    <div className="reticle-corners" />
+  </div>
+  <div className="radar-sweep" />
+  <div className="military-coords">
+    <div className="label">GRID REFERENCE</div>
+    <div className="value">37°34'N 126°58'E</div>
+    <div className="timestamp">
+      <span className="label">ZULU </span>
+      <span className="value">{new Date().toISOString().slice(0,19).replace('T',' ')}Z</span>
+    </div>
+  </div>
+  <div className="system-status">
+    {shaderMode === 'godmode' ? '👁️ PANOPTIC MODE' : 'System Online'}
+  </div>
+  <div className="data-freshness">
+    <span className="live">● LIVE</span> {shaderMode === 'godmode' ? 'ALL FEEDS' : 'FEED'}
+  </div>
+  </>
+)}
+
+{(shaderMode === 'nvg' || shaderMode === 'flir' || shaderMode === 'godmode') && (
+  <div className="crosshair" />
+)}
+
+{shaderMode === 'crt' && !loading && (
+  <div className="crosshair" />
+)}
 
   {/* Flight Info Panel */}
       {selectedFlight && (
@@ -1640,40 +2405,87 @@ return (
         </div>
       )}
 
-      <div className="hud-panel">
-        <div className="hud-title">WORLDVIEW</div>
-        <div className="hud-subtitle">OSINT Intelligence Platform</div>
+<div className="hud-panel">
+<div className="hud-title">WORLDVIEW</div>
+<div className="hud-subtitle">OSINT Intelligence Platform</div>
 
-        <div className="hud-section">
-          <div className="hud-section-title">INTELLIGENCE LAYERS</div>
-          {(Object.keys(layers) as Array<keyof LayerVisibility>).map((key) => (
-            <div
-              key={key}
-              className={`layer-toggle ${layers[key] ? 'active' : ''}`}
-              onClick={() => handleLayerToggle(key)}
-            >
-              <input type="checkbox" checked={layers[key]} readOnly />
-<label>
-              {key.toUpperCase().replace('GPSJAMMING', 'GPS JAM').replace('NOFLYZONES', 'NO-FLY ZONES').replace('NEWS', '📰 NEWS').replace('SATELLITEIMAGERY', '🛰️ SATELLITE')}
-              {(key === 'satellites' && satellitesLoading) && ' ⏳'}
-            </label>
-            </div>
-          ))}
-        </div>
+<div className="hud-section">
+<div className="hud-section-title">ACTIVE: {activeTab.toUpperCase()}</div>
+</div>
 
-        <div className="hud-section">
-          <div className="hud-section-title">DISPLAY MODE</div>
-          {(['normal', 'nvg', 'flir', 'crt'] as ShaderMode[]).map((mode) => (
-            <div
-              key={mode}
-              className={`layer-toggle ${shaderMode === mode ? 'active' : ''}`}
-              onClick={() => setShaderMode(mode)}
-            >
-              <input type="radio" checked={shaderMode === mode} readOnly />
-              <label>{mode.toUpperCase()}</label>
-            </div>
-          ))}
-        </div>
+{activeTab === 'globe' && (
+<div className="hud-section">
+<div className="hud-section-title">AVIATION</div>
+{(['flights', 'satellites', 'gpsJamming', 'maritime', 'noflyzones'] as Array<keyof LayerVisibility>).filter(k => layers.hasOwnProperty(k)).map((key) => (
+<div key={key} className={`layer-toggle ${layers[key] ? 'active' : ''}`} onClick={() => handleLayerToggle(key)}>
+<input type="checkbox" checked={layers[key]} readOnly />
+<label>{key === 'flights' ? '✈️ Flights' : key === 'satellites' ? '🛰️ Satellites' : key === 'gpsJamming' ? '📡 GPS Jam' : key === 'maritime' ? '🚢 Maritime' : '🚫 No-Fly'}</label>
+</div>
+))}
+</div>
+)}
+
+{activeTab === 'intel' && (
+<div className="hud-section">
+<div className="hud-section-title">INTELLIGENCE</div>
+{(['intelligence', 'news'] as Array<keyof LayerVisibility>).filter(k => layers.hasOwnProperty(k)).map((key) => (
+<div key={key} className={`layer-toggle ${layers[key] ? 'active' : ''}`} onClick={() => handleLayerToggle(key)}>
+<input type="checkbox" checked={layers[key]} readOnly />
+<label>{key === 'intelligence' ? '🗺️ Country Risk' : '📰 News'}</label>
+</div>
+))}
+</div>
+)}
+
+{activeTab === 'finance' && (
+<div className="hud-section">
+<div className="hud-section-title">MARKETS</div>
+{(['finance'] as Array<keyof LayerVisibility>).filter(k => layers.hasOwnProperty(k)).map((key) => (
+<div key={key} className={`layer-toggle ${layers[key] ? 'active' : ''}`} onClick={() => handleLayerToggle(key)}>
+<input type="checkbox" checked={layers[key]} readOnly />
+<label>📈 Stocks & Crypto</label>
+</div>
+))}
+</div>
+)}
+
+{activeTab === 'tech' && (
+<div className="hud-section">
+  <div className="hud-section-title">TECH INFRASTRUCTURE</div>
+  {(['cables', 'outages', 'datacenters', 'cloudRegions', 'techHQs', 'startupHubs', 'powerPlants'] as Array<keyof LayerVisibility>).filter(k => layers.hasOwnProperty(k)).map((key) => (
+  <div key={key} className={`layer-toggle ${layers[key] ? 'active' : ''}`} onClick={() => handleLayerToggle(key)}>
+    <input type="checkbox" checked={layers[key]} readOnly />
+    <label>{key === 'cables' ? '🔌 Cables' : key === 'outages' ? '⚠️ Outages' : key === 'datacenters' ? '💾 Datacenters' : key === 'cloudRegions' ? '☁️ Cloud Regions' : key === 'techHQs' ? '🏢 Tech HQs' : key === 'startupHubs' ? '🚀 Startups' : '⚡ Power Plants'}</label>
+  </div>
+  ))}
+</div>
+)}
+
+{activeTab === 'hazards' && (
+<div className="hud-section">
+<div className="hud-section-title">HAZARDS</div>
+{(['weather', 'naturalDisasters', 'hackerEvents'] as Array<keyof LayerVisibility>).filter(k => layers.hasOwnProperty(k)).map((key) => (
+<div key={key} className={`layer-toggle ${layers[key] ? 'active' : ''}`} onClick={() => handleLayerToggle(key)}>
+<input type="checkbox" checked={layers[key]} readOnly />
+<label>{key === 'weather' ? '⛈️ Weather' : key === 'naturalDisasters' ? '🌋 Disasters' : '💀 Hacker Events'}</label>
+</div>
+))}
+</div>
+)}
+
+<div className="hud-section">
+<div className="hud-section-title">DISPLAY MODE</div>
+{(['normal', 'dark', 'light', 'nvg', 'flir', 'crt', 'godmode'] as ShaderMode[]).map((mode) => (
+<div
+  key={mode}
+  className={`layer-toggle ${shaderMode === mode ? 'active' : ''}`}
+  onClick={() => setShaderMode(mode)}
+>
+  <input type="radio" checked={shaderMode === mode} readOnly />
+  <label>{mode === 'dark' ? '🌙 DARK' : mode === 'light' ? '☀️ LIGHT' : mode === 'godmode' ? '👁️ PANOPTIC' : mode.toUpperCase()}</label>
+</div>
+))}
+</div>
 
 <div className="hud-section">
 <div className="hud-section-title">QUICK LOCATIONS</div>
@@ -1749,6 +2561,39 @@ return (
 <div className="news-panel-body">
 <div className="news-articles-container">
 <p className="news-loading">Loading news...</p>
+</div>
+</div>
+</div>
+)}
+
+{countrySummary && (
+<div className="country-panel">
+<div className="country-panel-header">
+<h2>{countrySummary.name}</h2>
+<button onClick={() => setCountrySummary(null)}>✕</button>
+</div>
+<div className="country-panel-content">
+<div className="country-stats">
+<div className="stat-item"><span>Capital:</span> {countrySummary.capital}</div>
+<div className="stat-item"><span>Population:</span> {countrySummary.population}</div>
+<div className="stat-item"><span>GDP:</span> {countrySummary.gdp}</div>
+<div className="stat-item"><span>Risk Score:</span> {countrySummary.riskScore}/100</div>
+</div>
+<div className="country-summary">
+<h3>AI Summary</h3>
+<p>{countrySummary.summary}</p>
+</div>
+<div className="country-news">
+<h3>Recent News</h3>
+<ul>
+{countrySummary.news?.map((n: string, i: number) => <li key={i}>{n}</li>)}
+</ul>
+</div>
+<div className="country-cameras">
+<h3>Live Cameras</h3>
+{countrySummary.youtubeCameras?.map((url: string, i: number) => (
+<iframe key={i} src={url} width="100%" height="200" allowFullScreen />
+))}
 </div>
 </div>
 </div>
