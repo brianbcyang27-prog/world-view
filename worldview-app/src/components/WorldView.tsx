@@ -102,6 +102,13 @@ startupHubs: false,
   powerPlants: false
 });
 
+const LAYER_KEYS = ['flights','satellites','gpsJamming','maritime','noflyzones','news','satelliteImagery','intelligence','finance','weather','infrastructure','cables','outages','datacenters','cloudRegions','hackerEvents','naturalDisasters','techHQs','startupHubs','powerPlants'] as const;
+const [layerOpacities, setLayerOpacities] = useState<Record<string, number>>(() => {
+  const o: Record<string, number> = {};
+  LAYER_KEYS.forEach(k => o[k] = 1);
+  return o;
+});
+
 const [activeTab, setActiveTab] = useState<TabType>('globe');
 const [countrySummary, setCountrySummary] = useState<any>(null);
 
@@ -149,6 +156,8 @@ const [availableTimestamps, setAvailableTimestamps] = useState<number[]>([]);
 const [latency, setLatency] = useState<number | null>(null);
 const [lastUpdate, setLastUpdate] = useState<Date | null>(null);
 const [refreshInterval, setRefreshInterval] = useState(2000);
+  const layerOpacitiesRef = useRef<Record<string, number>>({});
+  layerOpacitiesRef.current = layerOpacities;
   const [showSettings, setShowSettings] = useState(false);
   const [showRoutes, setShowRoutes] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
@@ -493,8 +502,10 @@ const details = detailsJson ? JSON.parse(detailsJson) : {};
 
                 const mainBillboard = mainEntity.billboard as any;
                 if (mainBillboard) {
+                  const flightOpacity = layerOpacitiesRef.current['flights'] ?? 1;
                   mainBillboard.rotation = Cesium.Math.toRadians(-(track || 0) - 90);
-                  mainBillboard.color = onGround ? Cesium.Color.GRAY : (isMilitary ? Cesium.Color.ORANGE : (details.emergency !== 'none' ? Cesium.Color.RED : Cesium.Color.CYAN));
+                  const baseColor = onGround ? Cesium.Color.GRAY : (isMilitary ? Cesium.Color.ORANGE : (details.emergency !== 'none' ? Cesium.Color.RED : Cesium.Color.CYAN));
+                  mainBillboard.color = baseColor.withAlpha(baseColor.alpha * flightOpacity);
                 }
 
                 const historyPoints = newHistory.get(hex);
@@ -948,7 +959,7 @@ fetchFlights();
                 ),
                 point: {
                   pixelSize: 4,
-                  color: Cesium.Color.LIME.withAlpha(0.85),
+                  color: Cesium.Color.LIME.withAlpha(0.85 * (layerOpacitiesRef.current['satellites'] ?? 1)),
                   outlineColor: Cesium.Color.WHITE,
                   outlineWidth: 1,
                   scaleByDistance: new Cesium.NearFarScalar(1.5e2, 4.0, 1.5e7, 0.5)
@@ -1069,12 +1080,14 @@ fetchFlights();
 
           data.vessels.forEach((vessel: MaritimeVessel) => {
             const isWarship = vessel.type === 'warship';
+            const maritimeOpacity = layerOpacitiesRef.current['maritime'] ?? 1;
+            const vesselColor = (isWarship ? Cesium.Color.RED : Cesium.Color.BLUE).withAlpha(maritimeOpacity);
             const entity = viewer.entities.add({
               position: Cesium.Cartesian3.fromDegrees(vessel.lon, vessel.lat, 0),
               point: {
                 pixelSize: isWarship ? 8 : 6,
-                color: isWarship ? Cesium.Color.RED : Cesium.Color.BLUE,
-                outlineColor: Cesium.Color.WHITE,
+                color: vesselColor,
+                outlineColor: Cesium.Color.WHITE.withAlpha(maritimeOpacity),
                 outlineWidth: 2,
               },
               description: `**${vessel.name}**\n\nType: ${vessel.type}\nFlag: ${vessel.flag}\nSpeed: ${vessel.speed} knots\nHeading: ${vessel.heading}°\nMMSI: ${vessel.mmsi}`
@@ -1914,6 +1927,10 @@ default:
     setLayers((prev: LayerVisibility) => ({ ...prev, [layer]: !prev[layer] }));
   };
 
+  const handleOpacityChange = (layer: string, value: number) => {
+    setLayerOpacities(prev => ({ ...prev, [layer]: value }));
+  };
+
   const clearOrbitPath = useCallback(() => {
     if (viewer && orbitPathRef.current) {
       try {
@@ -1963,7 +1980,7 @@ default:
         width: 2,
         material: new Cesium.PolylineGlowMaterialProperty({
           glowPower: 0.2,
-          color: Cesium.Color.LIME.withAlpha(0.8)
+          color: Cesium.Color.LIME.withAlpha(0.8 * (layerOpacitiesRef.current['satellites'] ?? 1))
         })
       }
     });
@@ -2420,6 +2437,8 @@ onClick={() => setActiveTab(tab)}
 <div key={key} className={`layer-toggle ${layers[key] ? 'active' : ''}`} onClick={() => handleLayerToggle(key)}>
 <input type="checkbox" checked={layers[key]} readOnly />
 <label>{key === 'flights' ? '✈️ Flights' : key === 'satellites' ? '🛰️ Satellites' : key === 'gpsJamming' ? '📡 GPS Jam' : key === 'maritime' ? '🚢 Maritime' : '🚫 No-Fly'}</label>
+<input type="range" min="0" max="1" step="0.05" value={layerOpacities[key] ?? 1} onClick={(e) => e.stopPropagation()} onChange={(e) => handleOpacityChange(key as string, parseFloat(e.target.value))} className="layer-opacity-slider" />
+<span className="layer-opacity-value" onClick={(e) => e.stopPropagation()}>{Math.round((layerOpacities[key] ?? 1) * 100)}%</span>
 </div>
 ))}
 </div>
@@ -2432,6 +2451,8 @@ onClick={() => setActiveTab(tab)}
 <div key={key} className={`layer-toggle ${layers[key] ? 'active' : ''}`} onClick={() => handleLayerToggle(key)}>
 <input type="checkbox" checked={layers[key]} readOnly />
 <label>{key === 'intelligence' ? '🗺️ Country Risk' : '📰 News'}</label>
+<input type="range" min="0" max="1" step="0.05" value={layerOpacities[key] ?? 1} onClick={(e) => e.stopPropagation()} onChange={(e) => handleOpacityChange(key as string, parseFloat(e.target.value))} className="layer-opacity-slider" />
+<span className="layer-opacity-value" onClick={(e) => e.stopPropagation()}>{Math.round((layerOpacities[key] ?? 1) * 100)}%</span>
 </div>
 ))}
 </div>
@@ -2444,6 +2465,8 @@ onClick={() => setActiveTab(tab)}
 <div key={key} className={`layer-toggle ${layers[key] ? 'active' : ''}`} onClick={() => handleLayerToggle(key)}>
 <input type="checkbox" checked={layers[key]} readOnly />
 <label>📈 Stocks & Crypto</label>
+<input type="range" min="0" max="1" step="0.05" value={layerOpacities[key] ?? 1} onClick={(e) => e.stopPropagation()} onChange={(e) => handleOpacityChange(key as string, parseFloat(e.target.value))} className="layer-opacity-slider" />
+<span className="layer-opacity-value" onClick={(e) => e.stopPropagation()}>{Math.round((layerOpacities[key] ?? 1) * 100)}%</span>
 </div>
 ))}
 </div>
@@ -2456,6 +2479,8 @@ onClick={() => setActiveTab(tab)}
   <div key={key} className={`layer-toggle ${layers[key] ? 'active' : ''}`} onClick={() => handleLayerToggle(key)}>
     <input type="checkbox" checked={layers[key]} readOnly />
     <label>{key === 'cables' ? '🔌 Cables' : key === 'outages' ? '⚠️ Outages' : key === 'datacenters' ? '💾 Datacenters' : key === 'cloudRegions' ? '☁️ Cloud Regions' : key === 'techHQs' ? '🏢 Tech HQs' : key === 'startupHubs' ? '🚀 Startups' : '⚡ Power Plants'}</label>
+    <input type="range" min="0" max="1" step="0.05" value={layerOpacities[key] ?? 1} onClick={(e) => e.stopPropagation()} onChange={(e) => handleOpacityChange(key as string, parseFloat(e.target.value))} className="layer-opacity-slider" />
+    <span className="layer-opacity-value" onClick={(e) => e.stopPropagation()}>{Math.round((layerOpacities[key] ?? 1) * 100)}%</span>
   </div>
   ))}
 </div>
@@ -2468,6 +2493,8 @@ onClick={() => setActiveTab(tab)}
 <div key={key} className={`layer-toggle ${layers[key] ? 'active' : ''}`} onClick={() => handleLayerToggle(key)}>
 <input type="checkbox" checked={layers[key]} readOnly />
 <label>{key === 'weather' ? '⛈️ Weather' : key === 'naturalDisasters' ? '🌋 Disasters' : '💀 Hacker Events'}</label>
+<input type="range" min="0" max="1" step="0.05" value={layerOpacities[key] ?? 1} onClick={(e) => e.stopPropagation()} onChange={(e) => handleOpacityChange(key as string, parseFloat(e.target.value))} className="layer-opacity-slider" />
+<span className="layer-opacity-value" onClick={(e) => e.stopPropagation()}>{Math.round((layerOpacities[key] ?? 1) * 100)}%</span>
 </div>
 ))}
 </div>

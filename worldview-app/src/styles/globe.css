@@ -298,6 +298,24 @@ height: 100%;
   flex: 1;
 }
 
+.layer-opacity-slider {
+  width: 50px;
+  height: 3px;
+  accent-color: var(--accent-cyan);
+  cursor: pointer;
+  opacity: 0.7;
+  transition: opacity 0.2s;
+}
+.layer-opacity-slider:hover { opacity: 1; }
+
+.layer-opacity-value {
+  font-size: 9px;
+  color: var(--text-secondary, #888);
+  min-width: 28px;
+  text-align: right;
+  user-select: none;
+}
+
 .location-buttons {
   display: flex;
   flex-wrap: wrap;
